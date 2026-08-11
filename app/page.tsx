@@ -10,6 +10,12 @@ export default function DashboardPage() {
       <Link href="/activities" className="text-sm underline">
         Activities
       </Link>
+      <Link href="/settings" className="text-sm underline">
+        Settings
+      </Link>
+      <Link href="/plan" className="text-sm underline">
+        This week&apos;s plan
+      </Link>
       <form action="/auth/signout" method="post">
         <button type="submit" className="text-sm underline opacity-70">
           Sign out

@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 import { isStravaConnected } from "@/lib/strava";
 import Link from "next/link";
 import { SyncButton } from "./sync-button";
@@ -19,7 +19,7 @@ export default async function ActivitiesPage({
 }) {
   const { strava_error } = await searchParams;
   const connected = await isStravaConnected();
-  const supabase = await createClient();
+  const supabase = createServiceClient();
 
   const { data: activities } = connected
     ? await supabase

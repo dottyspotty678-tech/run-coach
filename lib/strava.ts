@@ -1,4 +1,4 @@
-import { createClient } from "@/lib/supabase/server";
+import { createServiceClient } from "@/lib/supabase/service";
 
 const STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token";
 const STRAVA_API_BASE = "https://www.strava.com/api/v3";
@@ -51,7 +51,7 @@ async function refreshStravaToken(refreshToken: string): Promise<StravaTokenResp
 }
 
 export async function saveStravaTokens(tokens: StravaTokenResponse) {
-  const supabase = await createClient();
+  const supabase = createServiceClient();
   await supabase.from("oauth_tokens").upsert({
     provider: "strava",
     access_token: tokens.access_token,
@@ -62,7 +62,7 @@ export async function saveStravaTokens(tokens: StravaTokenResponse) {
 }
 
 async function getValidStravaAccessToken(): Promise<string | null> {
-  const supabase = await createClient();
+  const supabase = createServiceClient();
   const { data } = await supabase
     .from("oauth_tokens")
     .select("access_token, refresh_token, expires_at")
@@ -82,7 +82,7 @@ async function getValidStravaAccessToken(): Promise<string | null> {
 }
 
 export async function isStravaConnected(): Promise<boolean> {
-  const supabase = await createClient();
+  const supabase = createServiceClient();
   const { data } = await supabase
     .from("oauth_tokens")
     .select("provider")
@@ -103,7 +103,7 @@ export async function syncStravaActivities(): Promise<{ synced: number }> {
   if (!res.ok) throw new Error(`Strava activities fetch failed: ${await res.text()}`);
 
   const activities = await res.json();
-  const supabase = await createClient();
+  const supabase = createServiceClient();
 
   const rows = activities.map((a: Record<string, unknown>) => ({
     external_id: a.id,
