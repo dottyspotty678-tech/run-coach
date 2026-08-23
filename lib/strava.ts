@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/service";
+import { recordSyncError, recordSyncSuccess } from "@/lib/syncStatus";
 
 const STRAVA_TOKEN_URL = "https://www.strava.com/oauth/token";
 const STRAVA_API_BASE = "https://www.strava.com/api/v3";
@@ -46,7 +47,16 @@ async function refreshStravaToken(refreshToken: string): Promise<StravaTokenResp
       grant_type: "refresh_token",
     }),
   });
-  if (!res.ok) throw new Error(`Strava token refresh failed: ${await res.text()}`);
+  if (!res.ok) {
+    // Auth errors mean the stored token is dead — mark the provider
+    // disconnected (drives the Today banner) rather than retry-looping
+    // (REQUIREMENTS §3.8). Reconnecting via OAuth recreates the row.
+    if (res.status === 400 || res.status === 401) {
+      const supabase = createServiceClient();
+      await supabase.from("oauth_tokens").delete().eq("provider", "strava");
+    }
+    throw new Error(`Strava token refresh failed: ${await res.text()}`);
+  }
   return res.json();
 }
 
@@ -91,7 +101,19 @@ export async function isStravaConnected(): Promise<boolean> {
   return !!data;
 }
 
+/** Syncs the last 30 days of activities, recording success/failure in sync_status. */
 export async function syncStravaActivities(): Promise<{ synced: number }> {
+  try {
+    const result = await doSyncStravaActivities();
+    await recordSyncSuccess("strava");
+    return result;
+  } catch (err) {
+    await recordSyncError("strava", err instanceof Error ? err.message : "Sync failed");
+    throw err;
+  }
+}
+
+async function doSyncStravaActivities(): Promise<{ synced: number }> {
   const accessToken = await getValidStravaAccessToken();
   if (!accessToken) throw new Error("Strava is not connected");
 

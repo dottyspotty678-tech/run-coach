@@ -67,3 +67,42 @@ create policy "authenticated full access" on calendar_events for all using (auth
 create policy "authenticated full access" on settings for all using (auth.role() = 'authenticated');
 create policy "authenticated full access" on race_goal for all using (auth.role() = 'authenticated');
 create policy "authenticated full access" on weekly_plans for all using (auth.role() = 'authenticated');
+
+-- ---------------------------------------------------------------------------
+-- Redesign migration (run this block in the Supabase SQL Editor)
+-- Idempotent: safe to run more than once.
+-- ---------------------------------------------------------------------------
+
+-- Structured plan storage (REQUIREMENTS §6): per-day training entries, the
+-- week summary and the shopping list, alongside the legacy text/meal columns.
+alter table weekly_plans add column if not exists training_plan_json jsonb;
+alter table weekly_plans add column if not exists week_summary text;
+alter table weekly_plans add column if not exists shopping_list_json jsonb;
+
+-- Per-provider sync bookkeeping (REQUIREMENTS §3.8) — read by the UI's
+-- getSyncStatus and written on every sync run.
+create table if not exists sync_status (
+  provider text primary key check (provider in ('strava', 'microsoft')),
+  last_synced_at timestamptz,
+  last_error text
+);
+
+-- Manual plan-generation log (REQUIREMENTS §3.7 rate limits): minimum 2
+-- minutes between manual generations, maximum 8 per London calendar day.
+create table if not exists generation_log (
+  id bigint generated always as identity primary key,
+  source text not null default 'manual' check (source in ('manual', 'cron')),
+  requested_at timestamptz not null default now()
+);
+
+alter table sync_status enable row level security;
+alter table generation_log enable row level security;
+
+-- "create policy if not exists" does not exist in Postgres — drop-then-create
+-- keeps the block idempotent. Access control lives in the PIN middleware; the
+-- app reaches the database only through the service-role key, which bypasses
+-- RLS (kept enabled per REQUIREMENTS §6).
+drop policy if exists "authenticated full access" on sync_status;
+create policy "authenticated full access" on sync_status for all using (auth.role() = 'authenticated');
+drop policy if exists "authenticated full access" on generation_log;
+create policy "authenticated full access" on generation_log for all using (auth.role() = 'authenticated');

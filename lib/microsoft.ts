@@ -1,4 +1,5 @@
 import { createServiceClient } from "@/lib/supabase/service";
+import { recordSyncError, recordSyncSuccess } from "@/lib/syncStatus";
 
 const MS_AUTH_BASE = "https://login.microsoftonline.com/common/oauth2/v2.0";
 const GRAPH_BASE = "https://graph.microsoft.com/v1.0";
@@ -45,15 +46,28 @@ export async function exchangeMicrosoftCode(code: string, redirectUri: string) {
 }
 
 async function refreshMicrosoftToken(refreshToken: string) {
-  return requestToken(
-    new URLSearchParams({
+  const res = await fetch(`${MS_AUTH_BASE}/token`, {
+    method: "POST",
+    headers: { "Content-Type": "application/x-www-form-urlencoded" },
+    body: new URLSearchParams({
       client_id: process.env.MICROSOFT_CLIENT_ID!,
       client_secret: process.env.MICROSOFT_CLIENT_SECRET!,
       refresh_token: refreshToken,
       grant_type: "refresh_token",
       scope: SCOPES,
-    })
-  );
+    }),
+  });
+  if (!res.ok) {
+    // Auth errors (typically 400 invalid_grant, or 401) mean the refresh
+    // token is dead — mark the provider disconnected rather than retry-
+    // looping (REQUIREMENTS §3.8). Reconnecting via OAuth recreates the row.
+    if (res.status === 400 || res.status === 401) {
+      const supabase = createServiceClient();
+      await supabase.from("oauth_tokens").delete().eq("provider", "microsoft");
+    }
+    throw new Error(`Microsoft token refresh failed: ${await res.text()}`);
+  }
+  return res.json() as Promise<MsTokenResponse>;
 }
 
 export async function saveMicrosoftTokens(tokens: MsTokenResponse) {
@@ -121,7 +135,19 @@ function isTravelEvent(e: GraphEvent): boolean {
   return false;
 }
 
+/** Syncs the next 14 days of calendar events, recording success/failure in sync_status. */
 export async function syncCalendarEvents(): Promise<{ synced: number }> {
+  try {
+    const result = await doSyncCalendarEvents();
+    await recordSyncSuccess("microsoft");
+    return result;
+  } catch (err) {
+    await recordSyncError("microsoft", err instanceof Error ? err.message : "Sync failed");
+    throw err;
+  }
+}
+
+async function doSyncCalendarEvents(): Promise<{ synced: number }> {
   const accessToken = await getValidMicrosoftAccessToken();
   if (!accessToken) throw new Error("Microsoft calendar is not connected");
 
@@ -158,6 +184,24 @@ export async function syncCalendarEvents(): Promise<{ synced: number }> {
   if (rows.length > 0) {
     const { error } = await supabase.from("calendar_events").upsert(rows);
     if (error) throw new Error(`Failed to store calendar events: ${error.message}`);
+  }
+
+  // Prune cancelled meetings (REQUIREMENTS §3.8): any stored event that
+  // overlaps the synced 14-day window but no longer appears upstream is gone
+  // from the real calendar — delete it so cancelled trips do not haunt the plan.
+  const upstreamIds = new Set(events.map((e) => e.id));
+  const { data: stored, error: fetchError } = await supabase
+    .from("calendar_events")
+    .select("external_id")
+    .lt("start_time", fourteenDaysOut.toISOString())
+    .gte("end_time", now.toISOString());
+  if (!fetchError && stored) {
+    const staleIds = stored
+      .map((r) => r.external_id as string)
+      .filter((id) => !upstreamIds.has(id));
+    if (staleIds.length > 0) {
+      await supabase.from("calendar_events").delete().in("external_id", staleIds);
+    }
   }
 
   return { synced: rows.length };
