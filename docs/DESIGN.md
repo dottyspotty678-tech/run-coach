@@ -119,6 +119,9 @@ Numbers in stats use `font-variant-numeric: tabular-nums`.
 | PIN keypad | `app/pin/pin-pad.tsx` | 4 dots, 0–9 + delete, auto-submit on 4th digit, shake on 401, countdown lockout on 429. |
 | Check-in forms | `app/checkin/checkin-forms.tsx` | Two textareas, one Save each: weekly note (keyed to the week containing today) and persistent injuries with "Clear — all healed". Fix round 1, U4. |
 | Check-in row (Today) | rendered in `app/page.tsx` | Persistent one-tap entry under the meal card; doubles as the injuries read-back ("Working around: …"). |
+| Injury history list | `app/checkin/injury-history.tsx` | Round 2, U5. Visually secondary list under current injuries: description + period rows, inline add/edit forms, in-place delete confirm. |
+| Log-session sheet | `app/activities/log-session.tsx` | Round 2, U6. Bottom sheet (same pattern as the regenerate confirm): date, session-type quick-pick chips + free-text "Other", duration, distance (run-ish types only), note. Entry points: Activity header (and empty state), Today hero when today's session is unticked (pre-selects the type). `ManualActivityActions` adds Edit/Delete to manually logged rows only; manual rows carry a "Logged manually" label and never show pace. |
+| Revise card | `app/plan/revise-plan.tsx` | Round 2, U7. "Happy with the week?" card after the day cards — the finishing step of generate → review → revise → done. Collapsed by default; expands to a note + "Revise plan" (POST `{revision_note}`, ~30 s in-flight state, 429/500 surfaced with retry). Shows "Revised {relative} — you asked: …" until the next generation clears it. |
 | Skeletons | `loading.tsx` per route + `.skeleton` utility | Reserve final layout space; visible < 500 ms. |
 | Empty states | per screen | Icon-free, one sentence + one action, per REQUIREMENTS §3. |
 

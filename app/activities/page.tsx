@@ -9,8 +9,11 @@ import {
   todayISO,
 } from "@/components/dates";
 import { getRecentActivities, isRun, runKm, type ActivityRow } from "@/components/data";
+import { SESSION_META } from "@/components/session";
+import type { SessionType } from "@/lib/planTypes";
 import { Banner } from "@/components/banner";
 import { SyncButton } from "./sync-button";
+import { LogSessionButton, ManualActivityActions } from "./log-session";
 
 // Reads the DB on every request — never serve a stale prerender.
 export const dynamic = "force-dynamic";
@@ -29,6 +32,13 @@ function formatPace(a: ActivityRow): string | null {
 function humaniseType(type: string): string {
   const spaced = type.replace(/([a-z])([A-Z])/g, "$1 $2");
   return spaced.charAt(0).toUpperCase() + spaced.slice(1).toLowerCase();
+}
+
+/** Manual entries store plan session types ("easy") or free text ("football");
+ *  use the session's proper label where one exists. */
+function sessionLabel(type: string): string {
+  const meta = SESSION_META[type as SessionType];
+  return meta ? meta.label : humaniseType(type);
 }
 
 function formatDuration(seconds: number): string {
@@ -78,25 +88,30 @@ export default async function ActivityPage({
 
   return (
     <main className="flex flex-col gap-4 px-4 pt-3">
-      <header className="pt-1">
+      <header className="flex items-center justify-between pt-1">
         <h1 className="text-[22px] font-semibold leading-7">Activity</h1>
+        {/* Manual logging (round 2, U6) works with or without Strava. */}
+        <LogSessionButton todayIso={today} />
       </header>
 
       {strava_error && (
         <Banner variant="error">Couldn't connect Strava ({strava_error}) — try again.</Banner>
       )}
 
-      {!connected ? (
+      {!connected && (
         <section className="card flex flex-col items-start gap-3 p-5">
           <h2 className="text-[17px] font-semibold">Connect Strava</h2>
           <p className="text-[14px]" style={{ color: "var(--ink-2)" }}>
-            Your recent running drives the weekly plan. Connect Strava to sync the last 30 days.
+            Your recent running drives the weekly plan. Connect Strava to sync the last 30 days —
+            or log sessions manually above.
           </p>
           <Link href="/settings#connections" className="btn-primary">
             Open Settings
           </Link>
         </section>
-      ) : (
+      )}
+
+      {(connected || activities.length > 0) && (
         <>
           {/* Volume chart */}
           <section className="card flex flex-col gap-3 p-4">
@@ -178,7 +193,10 @@ export default async function ActivityPage({
           {listActivities.length === 0 ? (
             <section className="card flex flex-col items-start gap-3 p-5">
               <p className="text-[15px] font-medium">No activities in the last 30 days</p>
-              <SyncButton />
+              <div className="flex flex-wrap gap-2">
+                {connected && <SyncButton />}
+                <LogSessionButton todayIso={today} appearance="secondary" />
+              </div>
             </section>
           ) : (
             <section className="flex flex-col gap-2">
@@ -186,14 +204,18 @@ export default async function ActivityPage({
                 <h2 className="overline" style={{ color: "var(--ink-2)" }}>
                   Last 30 days
                 </h2>
-                <SyncButton compact />
+                {connected && <SyncButton compact />}
               </div>
               <ul className="card divide-y" style={{ borderColor: "var(--line)" }}>
                 {listActivities.map((a) => {
                   const date = londonDateOf(a.start_date);
-                  const pace = formatPace(a);
+                  const manual = a.source === "manual";
+                  // Pace is never shown for manual entries (self-reported duration/distance).
+                  const pace = manual ? null : formatPace(a);
                   const run = isRun(a.type);
-                  const name = a.name ?? (run ? "Run" : humaniseType(a.type));
+                  const name = manual
+                    ? (a.note?.trim() || sessionLabel(a.type))
+                    : (a.name ?? (run ? "Run" : humaniseType(a.type)));
                   return (
                     <li
                       key={a.external_id}
@@ -206,13 +228,26 @@ export default async function ActivityPage({
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[15px] font-medium">{name}</span>
                         <span className="block text-[12px] tabular" style={{ color: "var(--ink-2)" }}>
-                          {/* Non-runs are clearly labelled with their type and never show pace (U1). */}
-                          {!run && `${humaniseType(a.type)} · `}
+                          {/* Manual rows are labelled (U6); non-runs carry their
+                              type and never show pace (U1). */}
+                          {manual && "Logged manually · "}
+                          {manual && a.note?.trim() && `${sessionLabel(a.type)} · `}
+                          {!manual && !run && `${humaniseType(a.type)} · `}
                           {a.distance_m > 0 && `${(a.distance_m / 1000).toFixed(1)} km · `}
                           {formatDuration(a.duration_s)}
                           {pace ? ` · ${pace}` : ""}
                         </span>
                       </span>
+                      {manual && a.manual_id !== undefined && (
+                        <ManualActivityActions
+                          manualId={a.manual_id}
+                          activityDate={date}
+                          type={a.type}
+                          durationMin={Math.round(a.duration_s / 60)}
+                          distanceKm={a.distance_m > 0 ? a.distance_m / 1000 : null}
+                          note={a.note ?? null}
+                        />
+                      )}
                     </li>
                   );
                 })}

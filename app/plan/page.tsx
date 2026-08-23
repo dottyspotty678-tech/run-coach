@@ -25,6 +25,7 @@ import {
 } from "@/components/data";
 import { SESSION_META, SessionBadge } from "@/components/session";
 import { GeneratePlanButton } from "@/components/generate-plan";
+import { RevisePlan } from "./revise-plan";
 import { ScrollToHash } from "@/components/scroll-to-hash";
 import { IconChevronRight, IconTick } from "@/components/icons";
 
@@ -198,6 +199,13 @@ export default async function PlanPage() {
               <p className="whitespace-pre-wrap text-[14px] leading-[21px]">{plan.training_plan_text}</p>
             </section>
           )}
+
+          {/* Review-and-revise (round 2, U7): the finishing step of the
+              generate → review → revise → done flow. */}
+          <RevisePlan
+            revisionNote={plan.revision_note ?? null}
+            revisedAtRelative={relativeTime(plan.revised_at ?? null, now)}
+          />
         </>
       )}
 

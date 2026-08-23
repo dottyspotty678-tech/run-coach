@@ -36,6 +36,7 @@ import { SESSION_META, SessionBadge, MealBadge } from "@/components/session";
 import { Banner } from "@/components/banner";
 import { GeneratePlanButton } from "@/components/generate-plan";
 import { PullRefresh } from "@/components/pull-refresh";
+import { LogSessionButton } from "@/app/activities/log-session";
 import { IconChevronRight, IconTick } from "@/components/icons";
 
 // Reads the DB on every request — never serve a stale prerender.
@@ -217,6 +218,17 @@ export default async function TodayPage() {
             >
               {todaySession.why}
             </p>
+            {/* U6: sessions that never reach Strava can be logged from here. */}
+            {todaySession.session_type !== "rest" &&
+              !sessionDone(todaySession.session_type, done.get(today)) && (
+                <div className="-mb-2 flex justify-end">
+                  <LogSessionButton
+                    todayIso={today}
+                    defaultType={todaySession.session_type}
+                    label="Done but not on Strava? Log it"
+                  />
+                </div>
+              )}
           </section>
         ) : (
           <section className="card flex flex-col gap-2 p-5">

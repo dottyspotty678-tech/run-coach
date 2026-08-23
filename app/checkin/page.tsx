@@ -5,9 +5,10 @@ import {
   relativeTime,
   todayISO,
 } from "@/components/dates";
-import { getRecentFeedback, getRunnerContext } from "@/components/data";
+import { getInjuryHistory, getRecentFeedback, getRunnerContext } from "@/components/data";
 import { IconChevronLeft } from "@/components/icons";
 import { FeedbackForm, InjuriesForm } from "./checkin-forms";
+import { InjuryHistory } from "./injury-history";
 
 // Reads the DB on every request — never serve a stale prerender.
 export const dynamic = "force-dynamic";
@@ -25,9 +26,10 @@ export default async function CheckinPage() {
   // about the week that just happened.
   const describedWeek = mondayOf(today);
 
-  const [context, feedback] = await Promise.all([
+  const [context, feedback, injuryHistory] = await Promise.all([
     getRunnerContext(),
     getRecentFeedback(3),
+    getInjuryHistory(),
   ]);
 
   const currentNote = feedback.find((f) => f.week_start_date === describedWeek);
@@ -105,9 +107,13 @@ export default async function CheckinPage() {
         </div>
       </section>
 
+      {/* Past injuries (round 2, U5) — visually secondary, rarely changes. */}
+      <InjuryHistory items={injuryHistory} />
+
       <footer className="pb-2 text-[12px] leading-[17px]" style={{ color: "var(--ink-3)" }}>
-        Both notes go straight into the next plan generation — injuries shape which sessions
-        are safe; the weekly note nudges how hard the coach pushes.
+        Everything here feeds the next plan generation — current injuries shape which sessions
+        are safe now, past injuries keep the ramp cautious, and the weekly note nudges how
+        hard the coach pushes.
       </footer>
     </main>
   );
