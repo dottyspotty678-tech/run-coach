@@ -16,11 +16,6 @@ export default function DashboardPage() {
       <Link href="/plan" className="text-sm underline">
         This week&apos;s plan
       </Link>
-      <form action="/auth/signout" method="post">
-        <button type="submit" className="text-sm underline opacity-70">
-          Sign out
-        </button>
-      </form>
     </main>
   );
 }

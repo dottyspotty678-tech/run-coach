@@ -1,8 +1,8 @@
 import { createClient } from "@supabase/supabase-js";
 
-// Service-role client for all data-table access (not auth). Bypasses RLS —
-// the login gate in middleware.ts is the actual security boundary for this
-// single-user app, and cron jobs have no browser session/cookies to use RLS with.
+// Service-role client for all data-table access. Bypasses RLS — the app has
+// no auth at all (owner accepted the exposure); cron jobs also have no
+// browser session/cookies to use RLS with.
 export function createServiceClient() {
   return createClient(
     process.env.NEXT_PUBLIC_SUPABASE_URL!,
