@@ -374,6 +374,13 @@ injuries or niggles and (b) how the last week of sessions felt; both feed genera
 - **Injuries**: one persistent free-text field ("Current injuries / niggles") that stays
   until edited or cleared, and is shown back in the UI so it is obvious what the planner
   believes. Stored in the `runner_context` singleton row.
+- **Injury history (Must — added in round 2, U5)**: a list of past injuries — free-text
+  description plus a rough free-text period (e.g. "calf strain, winter 2024, ~6 weeks off") —
+  with add/edit/delete, stored in `injury_history`. Lives on the Check-in screen alongside
+  current injuries, visually secondary (it changes rarely). Feeds generation as background
+  context, clearly distinguished from current injuries: current = "work around this now";
+  historical = "be structurally cautious about this" (e.g. temper how fast related loads
+  ramp even when currently healthy).
 - **Weekly feedback**: a short free-text note keyed by `week_start_date` (the Monday of the
   week it describes), editable until the next plan generates. Stored in `weekly_feedback`.
 - **Generation**: the prompt gains a "CONTEXT FROM THE RUNNER" section — the injuries text
@@ -385,6 +392,28 @@ injuries or niggles and (b) how the last week of sessions felt; both feed genera
   Backend interface contract: DESIGN.md §8.
 - **Roadmap (not this build)**: a voice-agent capture flow (ElevenLabs) will populate the
   same free-text fields; the data model deliberately stays transcript-friendly.
+
+### 3.12 Manually logged sessions (Must — added in round 2, U6)
+
+Why: some sessions never reach Strava (gym strength work, watchless treadmill runs,
+five-a-side). Without them, training load reads low and strength days never tick complete.
+
+- **Log a session**: a simple form — date (default today), type (the plan's session types
+  plus free-text other), duration in minutes, optional distance km for runs, optional short
+  note. Entries are editable and deletable. Primary entry point: the Activity screen;
+  ideally also the Today hero when today's session is unticked.
+- **Merge everywhere**: manual entries join the same stream Strava feeds — the Activity list
+  (clearly labelled "logged manually", never with pace), the training-load context sent to
+  Claude (flagged as manually logged), and type-aware completion ticks (a logged gym session
+  ticks a strength day).
+- **Running km rule** (consistent with U1): run-type manual entries WITH a distance count
+  toward running km; everything else counts as supporting training only.
+- **Storage**: a separate `manual_activities` table — never shoehorned into
+  `strava_activities` (its PK is the Strava external id). The streams merge in the data
+  helpers so every consumer sees one unified list. Strava remains the source of truth where
+  both exist — no de-duplication in v1; the user avoids double-logging.
+- Backend interface contract for the UI: DESIGN.md §8b. Free-text-friendly for the future
+  voice capture flow (roadmap, as U4).
 
 ## 4. Content and tone
 

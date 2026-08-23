@@ -226,6 +226,52 @@ happened. Injuries show a read-back line ("The planner is working around: …" /
 "The planner believes you are injury-free") above the edit field, with a one-tap
 "Clear — all healed" action.
 
+## 8b. Injury history & manual sessions — backend interface (added in round 2, U5/U6)
+
+Backend is live; the designer builds: an **injury history list** on `/checkin`
+(visually secondary — it changes rarely) with add/edit/delete, a **"Log a
+session" form** reachable from Activity (primary entry point) and ideally from
+the Today hero when today's session is unticked, and edit/delete affordances on
+manually logged rows. Same contract style as §7/§8.
+
+Data access (`components/data.ts`; degrade silently until the Round 2
+migration runs):
+
+- `getInjuryHistory(): Promise<Array<{ id: number; description: string; period: string; created_at: string }>>`
+  — past injuries, newest first. `period` is rough free text ("winter 2024,
+  ~6 weeks off") and may be `""`.
+- `getRecentActivities(days)` now returns ONE unified stream: Strava rows plus
+  manual entries, newest first. Every row gained optional fields:
+  `source?: "strava" | "manual"`, `manual_id?: number` (for edit/delete
+  forms), `note?: string | null`. Manual rows have `external_id = -manual_id`
+  (negative — safe React key, never collides with Strava ids),
+  `average_pace: null`, and `name` set to the note when present. Label rows
+  with `source === "manual"` as "logged manually"; never show pace for them.
+  Aggregations, ticks (`sessionDone`) and the generation context already
+  consume the merged stream — no extra wiring.
+- `getManualActivities(days)` returns the raw manual rows
+  (`{ id, activity_date, type, duration_min, distance_km, note, created_at }`)
+  if the UI wants them unmerged.
+
+Server actions (`app/settings/actions.ts`):
+
+- `addInjuryHistory(formData)` — fields `description` (required), `period`
+  (optional). `updateInjuryHistory(formData)` — `id` + same fields.
+  `deleteInjuryHistory(formData)` — `id`.
+- `addManualActivity(formData)` — fields `type` (required; a plan session
+  type like "easy"/"strength", or free text like "football"), `duration_min`
+  (required, positive integer), `activity_date` (optional YYYY-MM-DD, defaults
+  to today in London), `distance_km` (optional; run-flavoured types with a
+  distance count toward running km — everything else is supporting training),
+  `note` (optional). `updateManualActivity(formData)` — `id` + same fields.
+  `deleteManualActivity(formData)` — `id`.
+
+Semantics: a manually logged gym session ticks a `strength` day; a manual run
+ticks run days (and its distance, when given, counts in the running-km stats
+and the generation context, flagged "logged manually" there). Strava stays the
+source of truth where both exist — no de-duplication; the user avoids
+double-logging. Both tables are free-text-friendly for the future voice flow.
+
 ## 9. States checklist (stress-tester map)
 
 Every tab screen implements: **loading** (route `loading.tsx` skeletons), **empty** (specified

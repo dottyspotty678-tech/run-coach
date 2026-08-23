@@ -26,6 +26,8 @@ import {
   weekDates,
 } from "@/components/dates";
 import {
+  getInjuryHistory,
+  getRecentActivities,
   getRecentFeedback,
   getRunnerContext,
   isRun,
@@ -60,21 +62,17 @@ async function buildContext(): Promise<PlanContext> {
   const weekDatesList = weekDates(weekStart);
   const weekEnd = addDays(weekStart, 7);
 
-  const twentyEightDaysAgo = new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000).toISOString();
-
   const [
-    { data: activities },
+    activities,
     { data: events },
     { data: settings },
     { data: raceGoal },
     runnerContext,
     recentFeedback,
+    injuryHistory,
   ] = await Promise.all([
-    supabase
-      .from("strava_activities")
-      .select("*")
-      .gte("start_date", twentyEightDaysAgo)
-      .order("start_date", { ascending: false }),
+    // Unified stream (round 2, U6): Strava + manually logged sessions.
+    getRecentActivities(28),
     supabase
       .from("calendar_events")
       .select("external_id, title, start_time, end_time, is_all_day, is_travel")
@@ -85,12 +83,14 @@ async function buildContext(): Promise<PlanContext> {
     supabase.from("race_goal").select("*").eq("id", true).maybeSingle(),
     getRunnerContext(),
     getRecentFeedback(3, weekStart),
+    getInjuryHistory(),
   ]);
 
   // Running vs supporting training (U1): running volume counts ONLY runs.
-  const all = activities ?? [];
+  const all = activities;
   const runs = all.filter((a) => isRun(a.type));
   const nonRuns = all.filter((a) => !isRun(a.type));
+  const manualCount = all.filter((a) => a.source === "manual").length;
 
   // Consistency-aware 28-day summary (REQUIREMENTS §3.3): running km for each
   // of the last 4 weeks plus the gap since the last run — not one blind total.
@@ -133,6 +133,9 @@ async function buildContext(): Promise<PlanContext> {
           .join("; ")}.`,
         `Last run: ${formatDateShort(lastRunDate!)} (${gapDays} day${gapDays === 1 ? "" : "s"} ago).`,
         nonRunSummary,
+        ...(manualCount > 0
+          ? [`${manualCount} of these sessions were logged manually (not on Strava).`]
+          : []),
       ].join("\n")
     : `No runs synced in the last 28 days — treat the runner as returning from a break and ramp up cautiously.\n${nonRunSummary}`;
 
@@ -174,11 +177,17 @@ async function buildContext(): Promise<PlanContext> {
       }. Household size: ${settings.household_size}.`
     : "No settings configured — assume no restrictions, household size 1, maintaining weight.";
 
-  // Context from the runner (U4): persistent injuries + recent week feedback,
-  // most recent weighted heaviest.
+  // Context from the runner (U4 + round 2 U5): current injuries are worked
+  // around now; historical injuries call for permanent structural caution.
   const injuriesLine = runnerContext?.injuries?.trim()
-    ? `Current injuries or niggles: ${runnerContext.injuries.trim()}`
+    ? `Current injuries or niggles (work around these NOW — reduce impact or intensity, avoid aggravating sessions): ${runnerContext.injuries.trim()}`
     : "Current injuries or niggles: none reported.";
+  const pastInjuriesLines =
+    injuryHistory.length > 0
+      ? injuryHistory
+          .map((i) => `- ${i.description}${i.period ? ` (${i.period})` : ""}`)
+          .join("\n")
+      : "- None recorded.";
   const feedbackLines =
     recentFeedback.length > 0
       ? recentFeedback
@@ -190,7 +199,11 @@ async function buildContext(): Promise<PlanContext> {
           )
           .join("\n")
       : "- No feedback recorded for recent weeks.";
-  const runnerContextSection = `${injuriesLine}\nHow recent weeks felt, most recent first:\n${feedbackLines}`;
+  const runnerContextSection = `${injuriesLine}
+Past injuries (history, not current problems — be structurally cautious about these: temper how quickly related loads and session types ramp, favour gradual progression where they could recur):
+${pastInjuriesLines}
+How recent weeks felt, most recent first:
+${feedbackLines}`;
 
   return {
     weekStart,
@@ -383,6 +396,7 @@ TRAINING RULES:
 
 MEAL RULES:
 - One evening meal per day. Every travel date listed above must be meal_type "travel": no recipe, empty ingredients, prep_time_min 0, and short_instructions gives 1-2 sentences of sensible eating-out guidance tied to that day's training and the weight goal (suggestive, never preachy).
+- Travel-day short_instructions must read as ordering guidance (what to choose when eating out), NEVER a cooking method — no preparation steps, no "drain / chop / mix". Treat every travel day as eating out even if the accommodation might allow self-catering (hotel apartment, holiday cottage): the shopping happens at home on Sunday, so travel days cannot be cooked for.
 - Home meals: varied across the week but drawing on a deliberately small shared ingredient pool — maximise reuse of fresh and perishable ingredients across the week's home meals to cut waste.
 - Respect the dietary restrictions and disliked ingredients above, and scale wording to the household size.
 - Hard-session and long-run days get heartier, carb-forward meals; rest days lighter — stated qualitatively ("bigger portion tonight — long run tomorrow"), never numerically.
@@ -390,7 +404,7 @@ MEAL RULES:
 - Use "assemble" for a late or rushed evening: a no-cook or one-pan meal of 10 minutes or less.
 
 SHOPPING LIST RULES:
-- Consolidate across the week's home and assemble meals only; travel days contribute nothing. If every day is travel, return an empty list.
+- Consolidate across the week's home and assemble meals only. Travel days contribute nothing: never include an item that only a travel-day meal would use. Every item on the list must trace to a home or assemble meal's ingredients. If every day is travel, return an empty list.
 - Assume a stocked store cupboard: leave out true staples (oil, salt, pepper, common dried herbs and spices).
 - quantity_note is qualitative ("2 large", "1 bag", "small bunch") — no weights unless natural (for example "500 g passata").
 
@@ -523,6 +537,30 @@ function coerceMeal(
   };
 }
 
+// m-5 helpers: fuzzy ingredient matching for the shopping-list scrub. An item
+// matches an ingredient when every significant word of the shorter phrase
+// appears in the longer one ("tinned tuna" ↔ "tinned tuna (1-2 tins)").
+function ingredientWords(s: string): string[] {
+  return s
+    .toLowerCase()
+    .replace(/[^a-z\s]/g, " ")
+    .split(/\s+/)
+    .filter((w) => w.length > 2);
+}
+
+function matchesAnyIngredient(item: string, ingredients: string[]): boolean {
+  const itemWords = ingredientWords(item);
+  if (itemWords.length === 0) return false;
+  return ingredients.some((ing) => {
+    const ingWords = ingredientWords(ing);
+    if (ingWords.length === 0) return false;
+    const [shorter, longer] =
+      itemWords.length <= ingWords.length ? [itemWords, ingWords] : [ingWords, itemWords];
+    const longerSet = new Set(longer);
+    return shorter.every((w) => longerSet.has(w));
+  });
+}
+
 /**
  * Validates a tool response. Structure-level problems (missing arrays, wrong
  * day counts, wrong date sets) are hard errors fed back into the retry
@@ -563,8 +601,13 @@ function validatePlan(
     }
   }
 
-  // Meals: same date-matching rule.
+  // Meals: same date-matching rule. While coercing, remember which raw
+  // ingredients belonged to travel meals (the coercion empties them) and which
+  // belong to home/assemble meals — the shopping list is scrubbed against
+  // these below (m-5).
   const meals: MealEntry[] = [];
+  const travelRawIngredients: string[] = [];
+  const homeIngredients: string[] = [];
   if (!Array.isArray(raw.meals)) {
     errors.push("meals must be an array of exactly 7 entries, Monday first.");
   } else {
@@ -578,7 +621,15 @@ function validatePlan(
         errors.push(`meals is missing an entry for ${date}.`);
         continue;
       }
-      meals.push(coerceMeal(entry, date, travelSet.has(date), warnings));
+      const meal = coerceMeal(entry, date, travelSet.has(date), warnings);
+      if (meal.meal_type === "travel") {
+        if (Array.isArray(entry.ingredients)) {
+          for (const i of entry.ingredients) if (typeof i === "string") travelRawIngredients.push(i);
+        }
+      } else {
+        homeIngredients.push(...meal.ingredients);
+      }
+      meals.push(meal);
     }
   }
 
@@ -606,6 +657,18 @@ function validatePlan(
 
   if (errors.length > 0) return { plan: null, errors, warnings };
 
+  // m-5: drop shopping items that trace ONLY to travel-day meals' original
+  // ingredients — travel days contribute nothing to the Sunday shop (§3.5).
+  const scrubbedShopping = shoppingList.filter((s) => {
+    const travelOnly =
+      matchesAnyIngredient(s.item, travelRawIngredients) &&
+      !matchesAnyIngredient(s.item, homeIngredients);
+    if (travelOnly) {
+      warnings.push(`Dropped shopping item "${s.item}" — used only by a travel-day meal (m-5)`);
+    }
+    return !travelOnly;
+  });
+
   // Soft checks (warn only — never fail generation).
   const strengthCount = trainingDays.filter((d) => d.session_type === "strength").length;
   if (strengthCount !== 2) {
@@ -620,7 +683,7 @@ function validatePlan(
       .filter((d: unknown) => !isTrainingDay(d))
       .map((d) => `training day ${(d as TrainingDay).date}`),
     ...meals.filter((m: unknown) => !isMealEntry(m)).map((m) => `meal ${(m as MealEntry).date}`),
-    ...shoppingList
+    ...scrubbedShopping
       .filter((s: unknown) => !isShoppingItem(s))
       .map((s) => `shopping item ${(s as ShoppingItem).item}`),
   ];
@@ -637,7 +700,7 @@ function validatePlan(
       week_summary: weekSummary,
       training_days: trainingDays,
       meals,
-      shopping_list: shoppingList,
+      shopping_list: scrubbedShopping,
     },
     errors: [],
     warnings,

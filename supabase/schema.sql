@@ -137,3 +137,37 @@ drop policy if exists "authenticated full access" on runner_context;
 create policy "authenticated full access" on runner_context for all using (auth.role() = 'authenticated');
 drop policy if exists "authenticated full access" on weekly_feedback;
 create policy "authenticated full access" on weekly_feedback for all using (auth.role() = 'authenticated');
+
+-- ---------------------------------------------------------------------------
+-- Round 2 migration (run this block in the Supabase SQL Editor)
+-- Idempotent: safe to run more than once.
+-- ---------------------------------------------------------------------------
+
+-- U5: past injuries — permanent structural caution for the planner.
+create table if not exists injury_history (
+  id bigint generated always as identity primary key,
+  description text not null,
+  period text not null default '', -- rough free text, e.g. "winter 2024, ~6 weeks off"
+  created_at timestamptz not null default now()
+);
+
+-- U6: sessions that never reach Strava (gym work, watchless treadmill runs).
+-- Deliberately separate from strava_activities (whose PK is the Strava id);
+-- the two streams merge in components/data.ts getRecentActivities.
+create table if not exists manual_activities (
+  id bigint generated always as identity primary key,
+  activity_date date not null,
+  type text not null,          -- a plan session type or free text
+  duration_min integer not null,
+  distance_km real,            -- runs with a distance count as running km
+  note text,
+  created_at timestamptz not null default now()
+);
+
+alter table injury_history enable row level security;
+alter table manual_activities enable row level security;
+
+drop policy if exists "authenticated full access" on injury_history;
+create policy "authenticated full access" on injury_history for all using (auth.role() = 'authenticated');
+drop policy if exists "authenticated full access" on manual_activities;
+create policy "authenticated full access" on manual_activities for all using (auth.role() = 'authenticated');

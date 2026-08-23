@@ -13,6 +13,12 @@ export type ActivityRow = {
   duration_s: number;
   start_date: string;
   average_pace: number | null;
+  /** Round 2 (U6): "manual" = user-logged entry; absent/"strava" = synced. */
+  source?: "strava" | "manual";
+  /** Manual entries only: manual_activities.id, for edit/delete affordances. */
+  manual_id?: number;
+  /** Manual entries only: the optional short note. */
+  note?: string | null;
 };
 
 export type CalendarEventRow = {
@@ -40,16 +46,84 @@ export async function getPlanForWeek(weekStart: string): Promise<WeeklyPlanRow |
   return (data as WeeklyPlanRow | null) ?? null;
 }
 
-/** Activities in the last N days, newest first. */
+/**
+ * Activities in the last N days, newest first — ONE unified stream (round 2,
+ * U6): Strava rows merged with manually logged sessions, so every consumer
+ * (aggregations, ticks, generation context) sees the same picture. Strava
+ * remains the source of truth where both exist; no de-duplication in v1.
+ */
 export async function getRecentActivities(days: number): Promise<ActivityRow[]> {
   const supabase = createServiceClient();
   const since = new Date(Date.now() - days * 86400000).toISOString();
-  const { data } = await supabase
-    .from("strava_activities")
-    .select("external_id, type, name:raw_json->>name, distance_m, duration_s, start_date, average_pace")
-    .gte("start_date", since)
-    .order("start_date", { ascending: false });
-  return (data as ActivityRow[] | null) ?? [];
+  const [{ data }, manual] = await Promise.all([
+    supabase
+      .from("strava_activities")
+      .select("external_id, type, name:raw_json->>name, distance_m, duration_s, start_date, average_pace")
+      .gte("start_date", since)
+      .order("start_date", { ascending: false }),
+    getManualActivities(days),
+  ]);
+  const strava = ((data as ActivityRow[] | null) ?? []).map((a) => ({
+    ...a,
+    source: "strava" as const,
+  }));
+  return [...strava, ...manual.map(manualToActivityRow)].sort((a, b) =>
+    b.start_date.localeCompare(a.start_date)
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Manually logged sessions (round 2, U6) — read side. Interface contract in
+// docs/DESIGN.md §8b. Degrades silently until the Round 2 migration runs.
+// ---------------------------------------------------------------------------
+
+export type ManualActivityRow = {
+  id: number;
+  /** YYYY-MM-DD (London calendar date of the session). */
+  activity_date: string;
+  /** A plan session type ("easy", "strength", …) or free text ("football"). */
+  type: string;
+  duration_min: number;
+  distance_km: number | null;
+  note: string | null;
+  created_at: string;
+};
+
+/** Manual sessions in the last N days, newest first. */
+export async function getManualActivities(days: number): Promise<ManualActivityRow[]> {
+  try {
+    const supabase = createServiceClient();
+    const since = new Date(Date.now() - days * 86400000).toISOString().slice(0, 10);
+    const { data, error } = await supabase
+      .from("manual_activities")
+      .select("id, activity_date, type, duration_min, distance_km, note, created_at")
+      .gte("activity_date", since)
+      .order("activity_date", { ascending: false });
+    if (error || !data) return [];
+    return data as ManualActivityRow[];
+  } catch {
+    return [];
+  }
+}
+
+/**
+ * A manual entry as a unified ActivityRow. external_id is the negated manual
+ * id so it can never collide with (positive) Strava ids; noon UTC keeps the
+ * London calendar date stable in both GMT and BST.
+ */
+export function manualToActivityRow(m: ManualActivityRow): ActivityRow {
+  return {
+    external_id: -m.id,
+    type: m.type,
+    name: m.note?.trim() || null,
+    distance_m: m.distance_km != null ? m.distance_km * 1000 : 0,
+    duration_s: m.duration_min * 60,
+    start_date: `${m.activity_date}T12:00:00Z`,
+    average_pace: null,
+    source: "manual",
+    manual_id: m.id,
+    note: m.note,
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -60,10 +134,14 @@ export async function getRecentActivities(days: number): Promise<ActivityRow[]> 
 
 const RUN_TYPES = new Set(["Run", "TrailRun", "VirtualRun"]);
 const STRENGTH_TYPES = new Set(["WeightTraining", "Workout", "Crossfit"]);
+// Manual entries use plan session types (round 2, U6) — the running ones.
+const MANUAL_RUN_TYPES = new Set(["run", "easy", "tempo", "intervals", "long", "race"]);
 
-/** True for Strava running types (Run / TrailRun / VirtualRun). */
+/** True for running types: Strava Run/TrailRun/VirtualRun, or a manual run-flavoured type. */
 export function isRun(type: string): boolean {
-  return RUN_TYPES.has(type);
+  if (RUN_TYPES.has(type)) return true;
+  const s = type.toLowerCase().trim();
+  return MANUAL_RUN_TYPES.has(s) || s.includes("run");
 }
 
 export type ActivityCategory = "run" | "strength" | "other";
@@ -71,6 +149,8 @@ export type ActivityCategory = "run" | "strength" | "other";
 export function activityCategory(type: string): ActivityCategory {
   if (isRun(type)) return "run";
   if (STRENGTH_TYPES.has(type)) return "strength";
+  const s = type.toLowerCase();
+  if (s.includes("strength") || s.includes("gym") || s.includes("weight")) return "strength";
   return "other";
 }
 
@@ -227,6 +307,36 @@ export async function getRecentFeedback(
     const { data, error } = await query;
     if (error || !data) return [];
     return data as WeeklyFeedbackRow[];
+  } catch {
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Injury history (round 2, U5) — read side. Interface contract in
+// docs/DESIGN.md §8b. Degrades silently until the Round 2 migration runs.
+// Free-text fields, voice-transcript-friendly like U4.
+// ---------------------------------------------------------------------------
+
+export type InjuryHistoryRow = {
+  id: number;
+  /** e.g. "calf strain" */
+  description: string;
+  /** Rough free-text period, e.g. "winter 2024, ~6 weeks off". May be "". */
+  period: string;
+  created_at: string;
+};
+
+/** Past injuries, newest first. */
+export async function getInjuryHistory(): Promise<InjuryHistoryRow[]> {
+  try {
+    const supabase = createServiceClient();
+    const { data, error } = await supabase
+      .from("injury_history")
+      .select("id, description, period, created_at")
+      .order("created_at", { ascending: false });
+    if (error || !data) return [];
+    return data as InjuryHistoryRow[];
   } catch {
     return [];
   }

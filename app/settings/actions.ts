@@ -110,3 +110,107 @@ export async function saveWeeklyFeedback(formData: FormData) {
   revalidatePath("/settings");
   revalidatePath("/");
 }
+
+// ---------------------------------------------------------------------------
+// Injury history (round 2, U5) — write side. Interface contract in
+// docs/DESIGN.md §8b. Free text throughout (voice-transcript-friendly).
+// ---------------------------------------------------------------------------
+
+function formId(formData: FormData): number | null {
+  const id = Number(formData.get("id"));
+  return Number.isInteger(id) && id > 0 ? id : null;
+}
+
+/** Adds a past injury. Fields: `description` (required), `period` (optional free text). */
+export async function addInjuryHistory(formData: FormData) {
+  const description = String(formData.get("description") ?? "").trim();
+  if (!description) return;
+  const period = String(formData.get("period") ?? "").trim();
+  const supabase = createServiceClient();
+  await supabase.from("injury_history").insert({ description, period });
+  revalidatePath("/checkin");
+  revalidatePath("/");
+}
+
+/** Edits a past injury. Fields: `id`, `description` (required), `period`. */
+export async function updateInjuryHistory(formData: FormData) {
+  const id = formId(formData);
+  const description = String(formData.get("description") ?? "").trim();
+  if (id === null || !description) return;
+  const period = String(formData.get("period") ?? "").trim();
+  const supabase = createServiceClient();
+  await supabase.from("injury_history").update({ description, period }).eq("id", id);
+  revalidatePath("/checkin");
+  revalidatePath("/");
+}
+
+/** Deletes a past injury. Field: `id`. */
+export async function deleteInjuryHistory(formData: FormData) {
+  const id = formId(formData);
+  if (id === null) return;
+  const supabase = createServiceClient();
+  await supabase.from("injury_history").delete().eq("id", id);
+  revalidatePath("/checkin");
+  revalidatePath("/");
+}
+
+// ---------------------------------------------------------------------------
+// Manually logged sessions (round 2, U6) — write side. Interface contract in
+// docs/DESIGN.md §8b.
+// ---------------------------------------------------------------------------
+
+function manualActivityFields(formData: FormData) {
+  const type = String(formData.get("type") ?? "").trim();
+  const duration = Math.round(Number(formData.get("duration_min")));
+  if (!type || !Number.isFinite(duration) || duration <= 0) return null;
+
+  const rawDate = String(formData.get("activity_date") ?? "");
+  const activity_date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : todayISO();
+
+  const rawDistance = String(formData.get("distance_km") ?? "").trim();
+  const parsedDistance = rawDistance === "" ? NaN : Number(rawDistance);
+  const distance_km = Number.isFinite(parsedDistance) && parsedDistance > 0 ? parsedDistance : null;
+
+  const note = String(formData.get("note") ?? "").trim() || null;
+  return { activity_date, type, duration_min: duration, distance_km, note };
+}
+
+/**
+ * Logs a session that never reached Strava. Fields: `type` (required — a plan
+ * session type or free text), `duration_min` (required, minutes),
+ * `activity_date` (optional YYYY-MM-DD, defaults to today in London),
+ * `distance_km` (optional — run types with a distance count as running km),
+ * `note` (optional).
+ */
+export async function addManualActivity(formData: FormData) {
+  const fields = manualActivityFields(formData);
+  if (!fields) return;
+  const supabase = createServiceClient();
+  await supabase.from("manual_activities").insert(fields);
+  revalidatePath("/activities");
+  revalidatePath("/");
+  revalidatePath("/plan");
+}
+
+/** Edits a logged session. Fields: `id` plus the addManualActivity fields. */
+export async function updateManualActivity(formData: FormData) {
+  const id = formId(formData);
+  const fields = manualActivityFields(formData);
+  if (id === null || !fields) return;
+  const supabase = createServiceClient();
+  await supabase.from("manual_activities").update(fields).eq("id", id);
+  revalidatePath("/activities");
+  revalidatePath("/");
+  revalidatePath("/plan");
+}
+
+/** Deletes a logged session. Field: `id`. */
+export async function deleteManualActivity(formData: FormData) {
+  const id = formId(formData);
+  if (id === null) return;
+  const supabase = createServiceClient();
+  await supabase.from("manual_activities").delete().eq("id", id);
+  revalidatePath("/activities");
+  revalidatePath("/");
+  revalidatePath("/plan");
+}
