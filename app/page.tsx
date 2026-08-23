@@ -10,6 +10,9 @@ export default function DashboardPage() {
       <Link href="/activities" className="text-sm underline">
         Activities
       </Link>
+      <Link href="/calendar" className="text-sm underline">
+        Calendar
+      </Link>
       <Link href="/settings" className="text-sm underline">
         Settings
       </Link>
