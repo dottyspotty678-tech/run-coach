@@ -38,4 +38,25 @@ export async function saveRaceGoal(formData: FormData) {
   });
 
   revalidatePath("/settings");
+  revalidatePath("/");
+  revalidatePath("/plan");
+}
+
+/** Removes the race goal — the app then plans for general fitness. */
+export async function clearRaceGoal() {
+  const supabase = createServiceClient();
+  await supabase.from("race_goal").delete().eq("id", true);
+  revalidatePath("/settings");
+  revalidatePath("/");
+  revalidatePath("/plan");
+}
+
+/** Deletes the stored OAuth token for a provider (confirmed in the UI first). */
+export async function disconnectProvider(formData: FormData) {
+  const provider = formData.get("provider");
+  if (provider !== "strava" && provider !== "microsoft") return;
+  const supabase = createServiceClient();
+  await supabase.from("oauth_tokens").delete().eq("provider", provider);
+  revalidatePath("/settings");
+  revalidatePath("/");
 }

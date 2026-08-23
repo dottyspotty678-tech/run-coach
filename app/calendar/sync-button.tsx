@@ -2,8 +2,9 @@
 
 import { useRouter } from "next/navigation";
 import { useState } from "react";
+import { IconRefresh } from "@/components/icons";
 
-export function CalendarSyncButton() {
+export function CalendarSyncButton({ compact = false }: { compact?: boolean }) {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -11,28 +12,51 @@ export function CalendarSyncButton() {
   async function handleSync() {
     setLoading(true);
     setError(null);
-    const res = await fetch("/api/microsoft/sync", { method: "POST" });
-    setLoading(false);
-
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({}));
-      setError(body.error ?? "Sync failed");
-      return;
+    try {
+      const res = await fetch("/api/microsoft/sync", { method: "POST" });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        setError(typeof body.error === "string" ? body.error : "Couldn't reach the calendar");
+        return;
+      }
+      router.refresh();
+    } catch {
+      setError("Couldn't reach the calendar");
+    } finally {
+      setLoading(false);
     }
-
-    router.refresh();
   }
 
   return (
-    <div className="flex flex-col gap-1">
+    <div className={compact ? "flex flex-col items-end gap-1" : "flex flex-col gap-1"}>
       <button
+        type="button"
         onClick={handleSync}
         disabled={loading}
-        className="rounded bg-blue-700 px-3 py-2 text-white disabled:opacity-50"
+        className={
+          compact
+            ? "flex min-h-[44px] items-center gap-1.5 text-[13px] font-semibold disabled:opacity-60"
+            : "btn-secondary"
+        }
+        style={compact ? { color: "var(--accent)" } : undefined}
       >
-        {loading ? "Syncing..." : "Sync now"}
+        {loading ? (
+          <>
+            <span className="spinner" style={{ width: 13, height: 13 }} />
+            Syncing…
+          </>
+        ) : (
+          <>
+            <IconRefresh size={15} strokeWidth={2.2} />
+            Sync now
+          </>
+        )}
       </button>
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && (
+        <p className="text-[13px] font-medium" style={{ color: "var(--danger)" }}>
+          {error}
+        </p>
+      )}
     </div>
   );
 }

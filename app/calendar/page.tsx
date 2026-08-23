@@ -1,18 +1,20 @@
+import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase/service";
 import { isMicrosoftConnected } from "@/lib/microsoft";
-import Link from "next/link";
+import {
+  addDays,
+  formatDayShort,
+  londonDateOf,
+  londonTimeOf,
+  todayISO,
+} from "@/components/dates";
+import type { CalendarEventRow } from "@/components/data";
+import { Banner } from "@/components/banner";
+import { IconChevronLeft } from "@/components/icons";
 import { CalendarSyncButton } from "./sync-button";
 
-function formatTime(iso: string) {
-  return new Date(iso).toLocaleString("en-GB", {
-    weekday: "short",
-    day: "numeric",
-    month: "short",
-    hour: "2-digit",
-    minute: "2-digit",
-    timeZone: "Europe/London",
-  });
-}
+// Reads the DB on every request — never serve a stale prerender.
+export const dynamic = "force-dynamic";
 
 export default async function CalendarPage({
   searchParams,
@@ -23,66 +25,106 @@ export default async function CalendarPage({
   const connected = await isMicrosoftConnected();
   const supabase = createServiceClient();
 
-  const { data: events } = connected
+  const today = todayISO();
+  const horizon = addDays(today, 14);
+
+  const { data } = connected
     ? await supabase
         .from("calendar_events")
-        .select("*")
-        .gte("start_time", new Date().toISOString())
+        .select("external_id, title, start_time, end_time, is_all_day, is_travel")
+        .gte("end_time", `${today}T00:00:00Z`)
+        .lt("start_time", `${horizon}T00:00:00Z`)
         .order("start_time", { ascending: true })
-        .limit(50)
     : { data: [] };
+  const events = (data as CalendarEventRow[] | null) ?? [];
+
+  // Group by London day over the next 14 days.
+  const byDay = new Map<string, CalendarEventRow[]>();
+  for (const e of events) {
+    const day = londonDateOf(e.start_time);
+    const list = byDay.get(day) ?? [];
+    list.push(e);
+    byDay.set(day, list);
+  }
+  const days = [...byDay.keys()].filter((d) => d >= today).sort();
 
   return (
-    <main className="mx-auto flex max-w-lg flex-col gap-4 p-6">
-      <Link href="/" className="text-sm opacity-70">
-        &larr; Back
-      </Link>
-      <h1 className="text-xl font-semibold">Calendar</h1>
+    <main className="flex flex-col gap-4 px-4 pt-3">
+      {/* Secondary screen: back affordance in the header */}
+      <header className="flex items-center gap-1 pt-1">
+        <Link
+          href="/plan"
+          aria-label="Back to Plan"
+          className="-ml-2 flex min-h-[44px] min-w-[44px] items-center justify-center"
+          style={{ color: "var(--accent)" }}
+        >
+          <IconChevronLeft size={22} strokeWidth={2.2} />
+        </Link>
+        <h1 className="text-[22px] font-semibold leading-7">Calendar</h1>
+        <div className="ml-auto">{connected && <CalendarSyncButton compact />}</div>
+      </header>
 
       {ms_error && (
-        <p className="rounded bg-red-100 p-2 text-sm text-red-700">
-          Microsoft connection failed ({ms_error}). Try again.
-        </p>
+        <Banner variant="error">Couldn't connect the calendar ({ms_error}) — try again.</Banner>
       )}
 
       {!connected ? (
-        <a
-          href="/api/microsoft/connect"
-          className="rounded bg-blue-700 px-3 py-2 text-center text-white"
-        >
-          Connect Microsoft calendar
-        </a>
+        <section className="card flex flex-col items-start gap-3 p-5">
+          <h2 className="text-[17px] font-semibold">Connect your calendar</h2>
+          <p className="text-[14px]" style={{ color: "var(--ink-2)" }}>
+            The planner reads the next 14 days to work around travel and busy evenings.
+          </p>
+          <Link href="/settings#connections" className="btn-primary">
+            Open Settings
+          </Link>
+        </section>
+      ) : days.length === 0 ? (
+        <section className="card flex flex-col items-start gap-3 p-5">
+          <p className="text-[15px] font-medium">No events in the next 14 days</p>
+          <CalendarSyncButton />
+        </section>
       ) : (
-        <CalendarSyncButton />
+        <section className="flex flex-col gap-3">
+          {days.map((day) => (
+            <div key={day} className="flex flex-col gap-1.5">
+              <h2
+                className="overline"
+                style={{ color: day === today ? "var(--accent)" : "var(--ink-2)" }}
+              >
+                {formatDayShort(day)}
+                {day === today && " · Today"}
+              </h2>
+              <ul className="card divide-y" style={{ borderColor: "var(--line)" }}>
+                {byDay.get(day)!.map((e) => (
+                  <li
+                    key={e.external_id}
+                    className="flex items-center gap-3 px-4 py-2.5"
+                    style={{ borderColor: "var(--line)" }}
+                  >
+                    <span className="w-12 shrink-0 text-[13px] font-semibold tabular" style={{ color: "var(--ink-2)" }}>
+                      {e.is_all_day ? "All day" : londonTimeOf(e.start_time)}
+                    </span>
+                    <span className="min-w-0 flex-1 truncate text-[14px] font-medium">
+                      {e.title ?? "(untitled)"}
+                    </span>
+                    {e.is_travel && (
+                      <span className="chip shrink-0" style={{ color: "var(--s-long)", background: "var(--s-long-soft)" }}>
+                        Travel
+                      </span>
+                    )}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          ))}
+        </section>
       )}
 
-      <ul className="flex flex-col gap-2">
-        {(events ?? []).map((e) => (
-          <li
-            key={e.external_id}
-            className="rounded border border-black/10 p-3 dark:border-white/10"
-          >
-            <div className="font-medium">
-              {e.title ?? "(untitled)"}
-              {e.is_travel && (
-                <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-xs text-amber-800">
-                  travel
-                </span>
-              )}
-            </div>
-            <div className="text-sm opacity-70">
-              {e.is_all_day
-                ? `${new Date(e.start_time).toLocaleDateString("en-GB")} (all day)`
-                : `${formatTime(e.start_time)} – ${formatTime(e.end_time)}`}
-            </div>
-          </li>
-        ))}
-        {connected && (events ?? []).length === 0 && (
-          <li className="text-sm opacity-70">
-            No upcoming events synced yet — tap Sync now.
-          </li>
-        )}
-      </ul>
+      <footer className="pb-2 text-[12px] leading-[17px]" style={{ color: "var(--ink-3)" }}>
+        Days are marked as travel when an event mentions travel, flights, trains or hotels, or
+        spans multiple days. The calendar is read-only here — it is an input to the planner,
+        not a destination.
+      </footer>
     </main>
   );
 }

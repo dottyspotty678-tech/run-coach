@@ -1,0 +1,162 @@
+# Run Coach — design system (v1 redesign)
+
+Companion to `REQUIREMENTS.md`. This document is the contract for the UI layer: visual
+language, tokens, component inventory and navigation. The implementation lives in
+`app/globals.css` (tokens), `components/` (shared UI) and the route files.
+
+---
+
+## 1. Visual direction: "Evening split"
+
+Run Coach is opened twice: for 20 seconds in a hotel corridor at 21:40, and for 10 calm
+minutes on a Sunday evening. Both moments happen at night, on a phone, by a tired person who
+wants an answer, not an experience. The design direction follows from that:
+
+- **Dark-first, calm, typography-led.** The dark theme is the primary design target (evening
+  use); light mode is a faithful daytime translation, not an afterthought. Near-black
+  blue-grey surfaces, generous type, no decoration. The light theme uses a warm paper tone so
+  the app never feels clinical.
+- **One warm accent.** A single burnt-orange accent (`--accent`) marks exactly two things:
+  primary actions and the active tab. It reads as energy without shouting, and it survives
+  both themes. Nothing else is orange except the `race` session colour, which deliberately
+  shares the accent hue — race day is the point of the whole app.
+- **Hierarchy does the work.** The Today screen answers "what should I do tonight?" through
+  scale alone: the session card is the largest element on any screen in the app; everything
+  below it steps down. No gradients, no shadows heavier than a hairline border, no
+  illustration.
+- **Colour = session type, always.** Each of the seven session types owns a fixed hue used
+  identically in badges, week-strip tiles and the volume chart. A user learns "green evening"
+  means easy in week one and never re-learns it.
+
+## 2. Colour system
+
+All colours are CSS custom properties defined in `app/globals.css` under `:root` and a
+`prefers-color-scheme: dark` override, mapped to Tailwind utilities via `@theme inline`.
+
+### Core palette
+
+| Token          | Light                    | Dark                     | Use |
+|----------------|--------------------------|--------------------------|-----|
+| `--bg`         | `#F4F3EF` warm paper     | `#101214` near-black     | page background |
+| `--surface`    | `#FFFFFF`                | `#1A1D21`                | cards |
+| `--raised`     | `#ECEAE4`                | `#23272C`                | chips, secondary surfaces, keypad keys |
+| `--ink`        | `#1B1D1F`                | `#F2F3F4`                | primary text |
+| `--ink-2`      | `#5A6068`                | `#9AA1A9`                | secondary text |
+| `--ink-3`      | `#8B9098`                | `#6A7178`                | tertiary/disabled text |
+| `--line`       | `rgba(27,29,31,.12)`     | `rgba(242,243,244,.10)`  | hairline borders |
+| `--accent`     | `#D9480F`                | `#FF8A50`                | primary buttons, active tab, links |
+| `--on-accent`  | `#FFFFFF`                | `#1B1D1F`                | text on accent |
+| `--accent-soft`| `rgba(217,72,15,.10)`    | `rgba(255,138,80,.14)`   | accent-tinted fills |
+| `--ok`         | `#2F9E44`                | `#69DB7C`                | success, completed ticks |
+| `--warn`       | `#E8990C`                | `#FFC078`                | stale/warning banners |
+| `--danger`     | `#D6336C` → `#E03131`    | `#FF8787`                | errors, destructive actions |
+
+### Session-type colours (fixed across the app)
+
+Each has a strong tone (`--s-*`) for text/icons and a soft tone (`--s-*-soft`) for fills.
+
+| Session     | Light strong | Dark strong | Abbrev (week strip) |
+|-------------|--------------|-------------|---------------------|
+| `rest`      | `#68707A`    | `#8B939C`   | Rest |
+| `easy`      | `#2F9E44`    | `#69DB7C`   | Easy |
+| `tempo`     | `#B08900`    | `#FFD43B`   | Tmp |
+| `intervals` | `#E03131`    | `#FF8787`   | Int |
+| `long`      | `#1971C2`    | `#4DABF7`   | Long |
+| `cross`     | `#7048E8`    | `#B197FC`   | XT |
+| `race`      | `#D9480F`    | `#FF8A50`   | Race |
+
+Badges are always colour + text label, never colour alone (colour-blind safe).
+
+## 3. Typography
+
+System stack only (SF Pro on iOS — the target device), per the performance budget:
+`-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`.
+
+Scale (rem, 4-step): 
+
+- **Display 28/34 semibold** — hero session title on Today only.
+- **Title 22/28 semibold** — screen titles.
+- **Headline 17/24 semibold** — card titles, recipe names.
+- **Body 15/22 regular** — detail text, instructions.
+- **Footnote 13/18 regular** — metadata, timestamps, banner copy.
+- **Overline 11/14 semibold, uppercase, +0.06em tracking** — badges, section labels, tab labels.
+
+Numbers in stats use `font-variant-numeric: tabular-nums`.
+
+## 4. Spacing, radius, elevation
+
+- 4 px base grid. Screen padding 16 px; card padding 16 px; section gap 24 px; card gap 12 px.
+- Radius: cards 16 px; buttons and inputs 12 px; chips/badges and keypad keys full (999 px).
+- Elevation: none. Separation is done with surface tone + 1 px `--line` hairlines.
+- Tap targets ≥ 44 × 44 px everywhere (tab items, keypad, checkboxes, steppers, chips).
+- Safe areas: root layout pads `env(safe-area-inset-top)`; the tab bar pads
+  `env(safe-area-inset-bottom)`; content reserves tab-bar height + inset at the bottom.
+- Mobile-first at 390 px, usable at 320 px (single column throughout; `max-w-lg` centred on
+  desktop).
+
+## 5. Component inventory
+
+| Component | File | Notes |
+|---|---|---|
+| Tab bar | `components/tab-bar.tsx` | Fixed bottom, 5 tabs, blur surface, active = accent; tapping active tab scrolls to top; hidden on `/pin`. |
+| Card | utility classes (`.card`) | Surface, radius 16, hairline border. |
+| Session badge | `components/session.tsx` | Soft fill + strong text, overline type. Fixed colour per type. |
+| Meal-type badge | `components/session.tsx` | Home / Eating out / Quick, same shape as session badge. |
+| Context chip | `.chip` utility | Header chips: "Travel day", "Race week", "6 weeks to …". |
+| Banner | `components/banner.tsx` | Variants: warn (stale/disconnected), error, info, offline. Slim, full-width, above content. |
+| Offline banner | `components/offline-banner.tsx` | Client; listens to online/offline events. |
+| Week strip | rendered in `app/page.tsx` | 7 tiles: weekday letter, session abbrev (session colour), travel dot, completed tick. Links to `/plan#d{date}`. |
+| Stat tile | `.stat` utility in Today/Activity | Big tabular number + footnote label. |
+| Day card (plan) | `app/plan/page.tsx` | Date, session badge, title, detail, duration, travel indicator, done tick. |
+| Meal card | `app/food/page.tsx` | Badge, name, prep chip, ingredients, `<details>` "Method" disclosure. |
+| Shopping list | `app/food/shopping-list.tsx` | Client; grouped by category; localStorage ticks keyed by week + generated_at; checked sink + strike; "Reset ticks". |
+| Segmented control | `app/food/food-tabs.tsx`, settings weight goal | 2-option pill. |
+| Generate/regenerate | `components/generate-plan.tsx` | Confirm sheet when replacing; in-flight spinner label "Planning your week… (about 30 seconds)"; error + retry. |
+| Sync button(s) | `app/settings/connections.tsx`, tab sync buttons | Combined sync = both providers, independent per-provider results. |
+| Tag input | `app/settings/food-form.tsx` | Type + add, tap to remove; writes hidden comma-joined field (keeps server-action field names). |
+| Stepper | `app/settings/food-form.tsx` | Household size 1–6. |
+| PIN keypad | `app/pin/pin-pad.tsx` | 4 dots, 0–9 + delete, auto-submit on 4th digit, shake on 401, countdown lockout on 429. |
+| Skeletons | `loading.tsx` per route + `.skeleton` utility | Reserve final layout space; visible < 500 ms. |
+| Empty states | per screen | Icon-free, one sentence + one action, per REQUIREMENTS §3. |
+
+## 6. Navigation map
+
+Bottom tab bar (always visible except on `/pin`):
+
+1. **Today** — `/` (PWA start URL)
+2. **Plan** — `/plan`
+3. **Food** — `/food` (Meals ⇄ Shopping list segmented control)
+4. **Activity** — `/activities`
+5. **Settings** — `/settings`
+
+Secondary screens (back affordance in header, no tab highlight):
+
+- **Calendar list** — `/calendar`, reached from Plan → calendar strip → "Full calendar" and
+  Settings → Connections.
+- **PIN screen** — `/pin`, rendered by middleware for unauthenticated requests; verifies via
+  `POST /api/pin/verify` with `{ pin: string }` → 200 (cookie set, redirect `/`), 401 (wrong),
+  429 + `{ retryAfterSeconds: number }` (lockout).
+
+Cross-links: Today session card → none (it *is* the answer); Today meal card → `/food#d{date}`;
+week-strip tile → `/plan#d{date}`; plan-ready banner → `/plan`; disconnected banner →
+`/settings#connections`; Activity empty state → `/settings#connections`.
+
+## 7. Interfaces the backend must honour (UI already reads these)
+
+- `lib/planTypes.ts` — structured plan types (`TrainingDay`, `MealEntry`, `ShoppingItem`)
+  exactly as REQUIREMENTS §3.3–3.5; the UI falls back gracefully when
+  `training_plan_json`/`shopping_list_json` are absent or `meal_plan_json` entries lack
+  `meal_type` (old-format plans).
+- Sync status: the UI reads a `sync_status` table shaped
+  `{ provider: 'strava' | 'microsoft', last_synced_at: timestamptz | null, last_error: text | null }`
+  and degrades silently (no banners) when the table does not exist yet.
+- `POST /api/pin/verify` per §6 above.
+- Week boundary: UI computes Monday-start weeks in Europe/London, switching to the upcoming
+  week from Sunday 17:00 (REQUIREMENTS §3.3).
+
+## 8. States checklist (stress-tester map)
+
+Every tab screen implements: **loading** (route `loading.tsx` skeletons), **empty** (specified
+copy + action), **error** (route `error.tsx` with retry), **offline** (global banner + cached
+render via service worker). Today additionally: no-plan card, stale-sync banner, disconnected
+banners, Sunday plan-ready banner. Food additionally: all-travel shopping empty state.

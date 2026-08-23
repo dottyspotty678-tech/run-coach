@@ -61,7 +61,7 @@ function solidColorPng(size, [r, g, b]) {
 }
 
 const outDir = path.join(__dirname, "..", "public");
-const color = [23, 23, 23]; // matches theme_color #171717
+const color = [217, 72, 15]; // accent orange #D9480F (docs/DESIGN.md palette)
 fs.writeFileSync(path.join(outDir, "icon-192.png"), solidColorPng(192, color));
 fs.writeFileSync(path.join(outDir, "icon-512.png"), solidColorPng(512, color));
 console.log("Wrote placeholder icons to", outDir);

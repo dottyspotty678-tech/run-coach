@@ -4,8 +4,8 @@
   "description": "Personal running training and meal planning",
   "start_url": "/",
   "display": "standalone",
-  "background_color": "#ffffff",
-  "theme_color": "#171717",
+  "background_color": "#101214",
+  "theme_color": "#101214",
   "icons": [
     {
       "src": "/icon-192.png",
