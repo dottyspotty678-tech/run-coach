@@ -272,6 +272,39 @@ and the generation context, flagged "logged manually" there). Strava stays the
 source of truth where both exist — no de-duplication; the user avoids
 double-logging. Both tables are free-text-friendly for the future voice flow.
 
+## 8c. Plan review-and-revise — backend interface (added in round 2, U7)
+
+Backend is live; the designer builds the "Suggest changes" affordance on the
+Plan screen, framed generate → review → revise → done (revise is the finishing
+step, not a loop — nothing hard-blocks a second revision; the §3.7 rate limits
+bound cost).
+
+API — same endpoint as generation:
+
+- `POST /api/plan/generate` with JSON body `{ "revision_note": string }`
+  (non-empty; trimmed; capped at 2000 chars server-side) revises the stored
+  plan for the current boundary week. Without a body (or with an empty note)
+  it is a normal fresh generation — the existing GeneratePlanButton behaviour
+  is unchanged.
+- Responses match generation: `200 { week_start_date, week_summary, revised: boolean }`;
+  `429 { error }` (rate limits — the same 2-min/8-day budget covers revisions);
+  `500 { error }` (real message; the stored plan is untouched on failure —
+  generate-then-swap).
+- Behaviour: the prompt gains a REVISION REQUEST block — the current stored
+  plan as JSON, the note, and a keep-stable instruction (change only what the
+  notes require; unimplicated days, meals and shopping items stay verbatim).
+  Best-effort sync still runs first. If no plan exists for the week, the call
+  degrades to a fresh generation.
+
+Reading the audit trail (`WeeklyPlanRow` in `lib/planTypes.ts`, populated by
+`getPlanForWeek`):
+
+- `revision_note: string | null` — the note behind the CURRENT stored plan;
+  show it on the Plan screen ("Revised: …") until the next generation.
+- `revised_at: string | null` — when that revision happened (`generated_at`
+  updates too). Both are null on a fresh generation and on pre-migration
+  rows; render nothing when null.
+
 ## 9. States checklist (stress-tester map)
 
 Every tab screen implements: **loading** (route `loading.tsx` skeletons), **empty** (specified

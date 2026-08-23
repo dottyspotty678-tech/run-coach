@@ -13,9 +13,22 @@ import { londonDateOf, todayISO } from "@/components/dates";
 const MIN_INTERVAL_MS = 2 * 60 * 1000;
 const MAX_PER_DAY = 8;
 
-export async function POST() {
+export async function POST(request: Request) {
   const supabase = createServiceClient();
   let logId: number | null = null;
+
+  // U7 (round 2): an optional JSON body { revision_note: string } turns this
+  // generation into a revision of the stored plan — same rate limits, same
+  // generate-then-swap. No body (the plain Generate button) = fresh plan.
+  let revisionNote: string | undefined;
+  try {
+    const body = (await request.json()) as { revision_note?: unknown };
+    if (typeof body?.revision_note === "string" && body.revision_note.trim()) {
+      revisionNote = body.revision_note.trim().slice(0, 2000);
+    }
+  } catch {
+    // No/invalid JSON body — a normal generation.
+  }
 
   try {
     // Look back 48 h — more than enough to cover both limits.
@@ -79,7 +92,7 @@ export async function POST() {
     else if (results[1].status === "rejected")
       syncNotes.push("Calendar sync failed before generation — travel data may be stale.");
 
-    const result = await generateWeeklyPlan({ syncNotes });
+    const result = await generateWeeklyPlan({ syncNotes, revisionNote });
     return NextResponse.json(result);
   } catch (err) {
     console.error("Manual plan generation failed:", err);

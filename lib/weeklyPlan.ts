@@ -355,17 +355,40 @@ const WEEKLY_PLAN_TOOL = {
   },
 };
 
-function buildPrompt(context: PlanContext): string {
+/** Revision context (round 2, U7): the stored plan being revised plus the runner's notes. */
+type RevisionRequest = {
+  note: string;
+  currentPlanJson: string;
+};
+
+function buildPrompt(context: PlanContext, revision?: RevisionRequest | null): string {
   const travelLine =
     context.travelDates.length > 0
       ? `Travel days this week (from the calendar): ${context.travelDates.join(", ")}.`
       : "No travel days this week.";
 
+  // U7: when revising, the current plan and the notes lead the prompt, with a
+  // keep-stable instruction — the point is a tweak, not a fresh plan.
+  const revisionBlock = revision
+    ? `
+
+REVISION REQUEST:
+A plan for this week already exists and the runner has reviewed it. Revise that plan rather than writing a new one.
+The runner's revision notes: "${revision.note}"
+The current plan, as stored:
+${revision.currentPlanJson}
+
+Revision rules:
+- Change ONLY what the notes require, plus the minimum knock-on adjustments needed to keep the week coherent (for example, moving the long run may mean swapping the adjacent rest day, or moving its carb-forward meal with it).
+- Keep everything else stable: the same dates, and identical session types, titles, details, whys, meals and shopping items for days the notes do not implicate. Do not reword or "improve" unchanged content.
+- Still return the complete week in full through the tool: all 7 training_days, all 7 meals and the full shopping list, unchanged entries included verbatim.`
+    : "";
+
   return `You are a UK running club coach and a practical meal planner for one busy consultant. Produce next week's structured training plan, evening meal plan and shopping list in a single response using the provide_weekly_plan tool.
 
 THE WEEK:
 The week starts ${context.weekStart} (Monday). Produce exactly 7 training_days and exactly 7 meals with these consecutive dates: ${context.weekDatesList.join(", ")}.
-${travelLine}
+${travelLine}${revisionBlock}
 
 TRAINING HISTORY (last 28 days):
 ${context.sections.trainingSummary}
@@ -751,9 +774,52 @@ async function callClaude(prompt: string): Promise<RawPlan> {
  * generation never deletes or corrupts the previous plan. On a validation
  * failure the Claude call is retried once with the errors appended.
  */
-export async function generateWeeklyPlan(options?: { syncNotes?: string[] }) {
+export async function generateWeeklyPlan(options?: {
+  syncNotes?: string[];
+  /**
+   * Round 2 (U7): when set, this generation is a REVISION — the stored plan
+   * for the target week is fed back into the prompt with the note and a
+   * keep-stable instruction, and the note is stored on the resulting row.
+   */
+  revisionNote?: string;
+}) {
   const context = await buildContext();
-  const basePrompt = buildPrompt(context);
+
+  // U7: load the plan being revised. If none exists (note sent against an
+  // empty week) fall back to a normal generation — the note still applies as
+  // guidance via the revision block only when there is a plan to hold stable.
+  const revisionNote = options?.revisionNote?.trim() || null;
+  let revision: RevisionRequest | null = null;
+  if (revisionNote) {
+    const supabaseRead = createServiceClient();
+    const { data: stored } = await supabaseRead
+      .from("weekly_plans")
+      .select("training_plan_text, training_plan_json, week_summary, meal_plan_json, shopping_list_json")
+      .eq("week_start_date", context.weekStart)
+      .maybeSingle();
+    if (stored) {
+      revision = {
+        note: revisionNote,
+        currentPlanJson: JSON.stringify(
+          stored.training_plan_json
+            ? {
+                week_summary: stored.week_summary,
+                training_days: stored.training_plan_json,
+                meals: stored.meal_plan_json,
+                shopping_list: stored.shopping_list_json,
+              }
+            : // Legacy plan: the text render is the best available basis.
+              { plan_text: stored.training_plan_text, meals: stored.meal_plan_json },
+          null,
+          1
+        ),
+      };
+    } else {
+      console.warn("Revision requested but no stored plan for", context.weekStart, "— generating fresh");
+    }
+  }
+
+  const basePrompt = buildPrompt(context, revision);
 
   let validated: ValidatedPlan | null = null;
   let lastErrors: string[] = [];
@@ -785,7 +851,8 @@ export async function generateWeeklyPlan(options?: { syncNotes?: string[] }) {
   }
 
   const supabase = createServiceClient();
-  const { error } = await supabase.from("weekly_plans").upsert({
+  const nowIso = new Date().toISOString();
+  const basePayload = {
     week_start_date: context.weekStart,
     training_plan_text: renderPlanText(validated),
     training_plan_json: validated.training_days,
@@ -793,13 +860,27 @@ export async function generateWeeklyPlan(options?: { syncNotes?: string[] }) {
     meal_plan_json: validated.meals,
     shopping_list_json: validated.shopping_list,
     input_snapshot_json: { ...context, sync_notes: options?.syncNotes ?? [] },
-    generated_at: new Date().toISOString(),
+    generated_at: nowIso,
+  };
+  // U7 audit trail: a revision stores its note + timestamp; a fresh
+  // generation clears them (the note is shown "until the next generation").
+  const { error } = await supabase.from("weekly_plans").upsert({
+    ...basePayload,
+    revision_note: revision ? revision.note : null,
+    revised_at: revision ? nowIso : null,
   });
-  if (error) throw new Error(`Failed to store weekly plan: ${error.message}`);
+  if (error) {
+    // Round 2b migration not run yet? Never brick generation over the audit
+    // columns — retry without them.
+    console.warn("weekly_plans upsert with revision columns failed, retrying without:", error.message);
+    const { error: retryError } = await supabase.from("weekly_plans").upsert(basePayload);
+    if (retryError) throw new Error(`Failed to store weekly plan: ${retryError.message}`);
+  }
 
   return {
     week_start_date: context.weekStart,
     week_summary: validated.week_summary,
+    revised: revision !== null,
   };
 }
 

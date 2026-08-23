@@ -415,6 +415,26 @@ five-a-side). Without them, training load reads low and strength days never tick
 - Backend interface contract for the UI: DESIGN.md §8b. Free-text-friendly for the future
   voice capture flow (roadmap, as U4).
 
+### 3.13 Plan review and revise (Must — added in round 2, U7)
+
+Why: the first generated plan is a draft to react to, not a verdict. The user reviews it,
+says what to change, and gets a revision — then treats the plan as final.
+
+- **Suggest changes**: on the Plan screen, once a plan exists — a short free-text note
+  ("move the long run to Sunday", "too many hard days") plus a Revise action.
+- **Revision = constrained regeneration**: the generation prompt additionally includes the
+  current stored plan (structured JSON) and the notes, with an explicit instruction to change
+  only what the feedback requires (plus minimal knock-on adjustments) and keep everything
+  else stable — dates, unimplicated sessions, meals and shopping items verbatim.
+- **Audit**: the revision note is stored with the week's plan (`weekly_plans.revision_note`,
+  `revised_at`) and shown until the next generation, which clears it.
+- **Limits and safety**: no hard one-revision cap — the §3.7 rate limits (2-minute gap,
+  8/day) bound cost — but the UI frames the flow as generate → review → revise → done, not
+  an infinite loop. Generate-then-swap applies: a failed revision leaves the current plan
+  untouched.
+- Backend contract: DESIGN.md §8c. Voice-agent note: this is the third capture surface a
+  future voice flow would feed.
+
 ## 4. Content and tone
 
 - **UK English everywhere** in app copy and generated content: -ise endings, "sport",

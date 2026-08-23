@@ -171,3 +171,14 @@ drop policy if exists "authenticated full access" on injury_history;
 create policy "authenticated full access" on injury_history for all using (auth.role() = 'authenticated');
 drop policy if exists "authenticated full access" on manual_activities;
 create policy "authenticated full access" on manual_activities for all using (auth.role() = 'authenticated');
+
+-- ---------------------------------------------------------------------------
+-- Round 2b migration (run this block in the Supabase SQL Editor)
+-- Idempotent: safe to run more than once.
+-- ---------------------------------------------------------------------------
+
+-- U7: review-and-revise. A revision stores the runner's note and when it
+-- happened; a fresh generation clears both (the note shows until the next
+-- generation).
+alter table weekly_plans add column if not exists revision_note text;
+alter table weekly_plans add column if not exists revised_at timestamptz;

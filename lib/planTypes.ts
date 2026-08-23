@@ -113,6 +113,13 @@ export type WeeklyPlanRow = {
   training_plan_json?: unknown;
   week_summary?: string | null;
   shopping_list_json?: unknown;
+  /**
+   * Review-and-revise (round 2, U7): the note the runner gave when the plan
+   * was last revised, shown until the next generation. Null when the stored
+   * plan is a fresh generation (or pre-migration).
+   */
+  revision_note?: string | null;
+  revised_at?: string | null;
 };
 
 // ---------------------------------------------------------------------------
