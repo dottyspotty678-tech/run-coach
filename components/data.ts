@@ -2,7 +2,7 @@
 // app/api (backend territory).
 
 import { createServiceClient } from "@/lib/supabase/service";
-import type { WeeklyPlanRow } from "@/lib/planTypes";
+import type { SessionType, WeeklyPlanRow } from "@/lib/planTypes";
 import { addDays, londonDateOf } from "@/components/dates";
 
 export type ActivityRow = {
@@ -52,9 +52,74 @@ export async function getRecentActivities(days: number): Promise<ActivityRow[]> 
   return (data as ActivityRow[] | null) ?? [];
 }
 
-/** Set of London dates (YYYY-MM-DD) that have at least one activity. */
-export function completedDates(activities: ActivityRow[]): Set<string> {
-  return new Set(activities.map((a) => londonDateOf(a.start_date)));
+// ---------------------------------------------------------------------------
+// Activity typing (fix round 1, U1): running figures count only runs; other
+// activities are supporting training, surfaced separately and never merged
+// into running distance or pace.
+// ---------------------------------------------------------------------------
+
+const RUN_TYPES = new Set(["Run", "TrailRun", "VirtualRun"]);
+const STRENGTH_TYPES = new Set(["WeightTraining", "Workout", "Crossfit"]);
+
+/** True for Strava running types (Run / TrailRun / VirtualRun). */
+export function isRun(type: string): boolean {
+  return RUN_TYPES.has(type);
+}
+
+export type ActivityCategory = "run" | "strength" | "other";
+
+export function activityCategory(type: string): ActivityCategory {
+  if (isRun(type)) return "run";
+  if (STRENGTH_TYPES.has(type)) return "strength";
+  return "other";
+}
+
+/** Total km of runs only, optionally restricted to the last N days. */
+export function runKm(activities: ActivityRow[], withinDays?: number, now: Date = new Date()): number {
+  return activities
+    .filter((a) => isRun(a.type))
+    .filter(
+      (a) =>
+        withinDays === undefined ||
+        now.getTime() - new Date(a.start_date).getTime() <= withinDays * 86400000
+    )
+    .reduce((s, a) => s + a.distance_m / 1000, 0);
+}
+
+/** London dates (YYYY-MM-DD) → the categories of activity completed that day. */
+export function completedCategories(activities: ActivityRow[]): Map<string, Set<ActivityCategory>> {
+  const out = new Map<string, Set<ActivityCategory>>();
+  for (const a of activities) {
+    const date = londonDateOf(a.start_date);
+    const set = out.get(date) ?? new Set<ActivityCategory>();
+    set.add(activityCategory(a.type));
+    out.set(date, set);
+  }
+  return out;
+}
+
+/**
+ * Type-aware completion tick (U1): a planned session only ticks when a
+ * matching activity type exists that day — a bike ride does not complete an
+ * interval session. With no planned session (old-format plans) any activity
+ * counts, preserving the pre-fix behaviour.
+ */
+export function sessionDone(
+  sessionType: SessionType | undefined,
+  categories: Set<ActivityCategory> | undefined
+): boolean {
+  if (!categories || categories.size === 0) return false;
+  if (!sessionType) return true; // old-format plan: any activity ticks
+  switch (sessionType) {
+    case "rest":
+      return false; // nothing to complete
+    case "strength":
+      return categories.has("strength");
+    case "cross":
+      return categories.has("strength") || categories.has("other");
+    default:
+      return categories.has("run"); // easy / tempo / intervals / long / race
+  }
 }
 
 /** Calendar events overlapping a Monday-start week. */
@@ -105,6 +170,65 @@ export async function getSyncStatus(): Promise<Partial<Record<"strava" | "micros
     return out;
   } catch {
     return {};
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Context & feedback (fix round 1, U4) — read side. Interface contract in
+// docs/DESIGN.md §8. Both degrade silently when the tables do not exist yet
+// (migration pending). Free-text fields, so a future voice-transcript flow
+// can populate the same rows.
+// ---------------------------------------------------------------------------
+
+export type RunnerContext = {
+  injuries: string;
+  updated_at: string;
+};
+
+/** Persistent "current injuries / niggles" free text, or null when unset/empty. */
+export async function getRunnerContext(): Promise<RunnerContext | null> {
+  try {
+    const supabase = createServiceClient();
+    const { data, error } = await supabase
+      .from("runner_context")
+      .select("injuries, updated_at")
+      .eq("id", true)
+      .maybeSingle();
+    if (error || !data) return null;
+    return data as RunnerContext;
+  } catch {
+    return null;
+  }
+}
+
+export type WeeklyFeedbackRow = {
+  /** Monday of the week the note describes (YYYY-MM-DD). */
+  week_start_date: string;
+  feedback: string;
+  updated_at: string;
+};
+
+/**
+ * Recent weekly feedback notes, most recent first. Pass `beforeWeek` to
+ * exclude the target week itself when building generation context.
+ */
+export async function getRecentFeedback(
+  limit = 3,
+  beforeWeek?: string
+): Promise<WeeklyFeedbackRow[]> {
+  try {
+    const supabase = createServiceClient();
+    let query = supabase
+      .from("weekly_feedback")
+      .select("week_start_date, feedback, updated_at")
+      .order("week_start_date", { ascending: false })
+      .limit(limit);
+    if (beforeWeek) query = query.lt("week_start_date", beforeWeek);
+    const { data, error } = await query;
+    if (error || !data) return [];
+    return data as WeeklyFeedbackRow[];
+  } catch {
+    return [];
   }
 }
 

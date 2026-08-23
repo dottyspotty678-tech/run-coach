@@ -14,6 +14,7 @@ export type SessionType =
   | "intervals"
   | "long"
   | "cross"
+  | "strength" // gym-based strength session (added in fix round 1, U2)
   | "race";
 
 export const SESSION_TYPES: readonly SessionType[] = [
@@ -23,6 +24,7 @@ export const SESSION_TYPES: readonly SessionType[] = [
   "intervals",
   "long",
   "cross",
+  "strength",
   "race",
 ];
 

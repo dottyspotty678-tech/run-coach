@@ -8,7 +8,7 @@ import {
   mondayOf,
   todayISO,
 } from "@/components/dates";
-import { getRecentActivities, type ActivityRow } from "@/components/data";
+import { getRecentActivities, isRun, runKm, type ActivityRow } from "@/components/data";
 import { Banner } from "@/components/banner";
 import { SyncButton } from "./sync-button";
 
@@ -16,7 +16,8 @@ import { SyncButton } from "./sync-button";
 export const dynamic = "force-dynamic";
 
 function formatPace(a: ActivityRow): string | null {
-  if (a.type !== "Run" || a.distance_m <= 0) return null;
+  // Pace is a running concept — runs only (U1).
+  if (!isRun(a.type) || a.distance_m <= 0) return null;
   const secPerKm = a.duration_s / (a.distance_m / 1000);
   const mins = Math.floor(secPerKm / 60);
   const secs = Math.round(secPerKm % 60);
@@ -47,22 +48,20 @@ export default async function ActivityPage({
     (a) => now.getTime() - new Date(a.start_date).getTime() <= 30 * 86400000
   );
 
-  // Weekly km for the last 8 weeks, current (boundary) week last + highlighted.
+  // Weekly RUNNING km for the last 8 weeks (U1 — rides and gym sessions never
+  // inflate running volume), current (boundary) week last + highlighted.
   const currentWeek = boundaryWeekStart(now);
   const weekStarts = Array.from({ length: 8 }, (_, i) => addDays(currentWeek, (i - 7) * 7));
   const kmByWeek = new Map<string, number>(weekStarts.map((w) => [w, 0]));
   for (const a of activities) {
+    if (!isRun(a.type)) continue;
     const week = mondayOf(londonDateOf(a.start_date));
     if (kmByWeek.has(week)) kmByWeek.set(week, kmByWeek.get(week)! + a.distance_m / 1000);
   }
   const maxKm = Math.max(1, ...kmByWeek.values());
 
-  const last7Km = activities
-    .filter((a) => now.getTime() - new Date(a.start_date).getTime() <= 7 * 86400000)
-    .reduce((s, a) => s + a.distance_m / 1000, 0);
-  const last28Km = activities
-    .filter((a) => now.getTime() - new Date(a.start_date).getTime() <= 28 * 86400000)
-    .reduce((s, a) => s + a.distance_m / 1000, 0);
+  const last7Km = runKm(activities, 7, now);
+  const last28Km = runKm(activities, 28, now);
 
   // Hand-rolled SVG bars (payload discipline — no chart library).
   const chartW = 320;
@@ -96,7 +95,7 @@ export default async function ActivityPage({
           <section className="card flex flex-col gap-3 p-4">
             <div className="flex items-end justify-between">
               <h2 className="overline" style={{ color: "var(--ink-2)" }}>
-                Weekly km — last 8 weeks
+                Weekly running km — last 8 weeks
               </h2>
               <div className="flex gap-4 text-right">
                 <span>
@@ -186,7 +185,8 @@ export default async function ActivityPage({
                 {listActivities.map((a) => {
                   const date = londonDateOf(a.start_date);
                   const pace = formatPace(a);
-                  const name = a.name ?? (a.type === "Run" ? "Run" : a.type);
+                  const run = isRun(a.type);
+                  const name = a.name ?? (run ? "Run" : a.type);
                   return (
                     <li
                       key={a.external_id}
@@ -199,7 +199,10 @@ export default async function ActivityPage({
                       <span className="min-w-0 flex-1">
                         <span className="block truncate text-[15px] font-medium">{name}</span>
                         <span className="block text-[12px] tabular" style={{ color: "var(--ink-2)" }}>
-                          {(a.distance_m / 1000).toFixed(1)} km · {formatDuration(a.duration_s)}
+                          {/* Non-runs are clearly labelled with their type and never show pace (U1). */}
+                          {!run && `${a.type} · `}
+                          {a.distance_m > 0 && `${(a.distance_m / 1000).toFixed(1)} km · `}
+                          {formatDuration(a.duration_s)}
                           {pace ? ` · ${pace}` : ""}
                         </span>
                       </span>

@@ -63,6 +63,7 @@ Each has a strong tone (`--s-*`) for text/icons and a soft tone (`--s-*-soft`) f
 | `intervals` | `#E03131`    | `#FF8787`   | Int |
 | `long`      | `#1971C2`    | `#4DABF7`   | Long |
 | `cross`     | `#7048E8`    | `#B197FC`   | XT |
+| `strength`  | `#0B7285`    | `#66D9E8`   | Str (added in fix round 1) |
 | `race`      | `#D9480F`    | `#FF8A50`   | Race |
 
 Badges are always colour + text label, never colour alone (colour-blind safe).
@@ -154,7 +155,40 @@ week-strip tile → `/plan#d{date}`; plan-ready banner → `/plan`; disconnected
 - Week boundary: UI computes Monday-start weeks in Europe/London, switching to the upcoming
   week from Sunday 17:00 (REQUIREMENTS §3.3).
 
-## 8. States checklist (stress-tester map)
+## 8. Context & feedback — backend interface (added in fix round 1, U4)
+
+The backend half of Context & feedback is live; the designer builds the capture
+UI (a tab or a Today card + screen — designer's call, ≤ 2 taps from open) on
+these interfaces. Same contract style as §7.
+
+Data access (`components/data.ts`, server-side; both degrade silently — `null`
+/ `[]` — until the fix-round-1 migration has run):
+
+- `getRunnerContext(): Promise<{ injuries: string; updated_at: string } | null>`
+  — the persistent "current injuries / niggles" free text. `null` when unset;
+  show it back to the user so it is obvious what the planner believes.
+- `getRecentFeedback(limit = 3, beforeWeek?: string): Promise<Array<{ week_start_date: string; feedback: string; updated_at: string }>>`
+  — weekly feedback notes, most recent first. `week_start_date` is the Monday
+  (YYYY-MM-DD) of the week the note describes. Pass `beforeWeek` to exclude a
+  target week (the generator does).
+
+Server actions (`app/settings/actions.ts`):
+
+- `saveInjuries(formData)` — field `injuries` (free text). Empty string
+  clears; the planner then reports "none". Persists until edited.
+- `saveWeeklyFeedback(formData)` — fields `feedback` (free text) and optional
+  `week_start_date` (any YYYY-MM-DD; snapped to its Monday; defaults to the
+  current London week). Upsert per week, so the note stays editable; an empty
+  `feedback` deletes the week's note.
+
+Generation: the prompt gains a "CONTEXT FROM THE RUNNER" section combining the
+injuries text and the last 3 feedback notes, most recent weighted heaviest.
+Saved notes influence the next generation automatically — no extra wiring.
+
+Roadmap note: both fields are plain free text so a voice-agent transcript
+(ElevenLabs, out of scope) can be written through these same actions.
+
+## 9. States checklist (stress-tester map)
 
 Every tab screen implements: **loading** (route `loading.tsx` skeletons), **empty** (specified
 copy + action), **error** (route `error.tsx` with retry), **offline** (global banner + cached

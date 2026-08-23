@@ -15,6 +15,7 @@ const MAX_PER_DAY = 8;
 
 export async function POST() {
   const supabase = createServiceClient();
+  let logId: number | null = null;
 
   try {
     // Look back 48 h — more than enough to cover both limits.
@@ -50,7 +51,14 @@ export async function POST() {
     // open rather than blocking the core feature.
 
     // Record the attempt before the Claude call — failed calls cost money too.
-    await supabase.from("generation_log").insert({ source: "manual" });
+    // The row id is kept so the failure reason can be written back (C-1:
+    // last error queryable via `select * from generation_log order by id desc`).
+    const { data: logRow } = await supabase
+      .from("generation_log")
+      .insert({ source: "manual" })
+      .select("id")
+      .maybeSingle();
+    logId = (logRow as { id: number } | null)?.id ?? null;
 
     // Fresh input, best-effort (§3.7): sync both providers first, but a sync
     // failure never blocks generation — proceed on cached data and note the
@@ -75,8 +83,16 @@ export async function POST() {
     return NextResponse.json(result);
   } catch (err) {
     console.error("Manual plan generation failed:", err);
+    const message = err instanceof Error ? err.message : "Unknown error";
+    // Make the failure queryable after the fact (C-1).
+    if (logId !== null) {
+      await supabase.from("generation_log").update({ error: message }).eq("id", logId);
+    }
+    // Single-user app behind the PIN gate: surfacing the real error in the
+    // body is an accepted trade-off — it is the only way to diagnose without
+    // Vercel log access.
     return NextResponse.json(
-      { error: "Couldn't generate the plan — try again in a minute." },
+      { error: `Couldn't generate the plan — ${message}` },
       { status: 500 }
     );
   }

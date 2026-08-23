@@ -35,6 +35,8 @@
   --s-long-soft: rgba(25, 113, 194, 0.1);
   --s-cross: #7048e8;
   --s-cross-soft: rgba(112, 72, 232, 0.1);
+  --s-strength: #0b7285;
+  --s-strength-soft: rgba(11, 114, 133, 0.1);
   --s-race: #d9480f;
   --s-race-soft: rgba(217, 72, 15, 0.12);
 }
@@ -70,6 +72,8 @@
     --s-long-soft: rgba(77, 171, 247, 0.14);
     --s-cross: #b197fc;
     --s-cross-soft: rgba(177, 151, 252, 0.14);
+    --s-strength: #66d9e8;
+    --s-strength-soft: rgba(102, 217, 232, 0.14);
     --s-race: #ff8a50;
     --s-race-soft: rgba(255, 138, 80, 0.14);
   }
@@ -104,6 +108,8 @@
   --color-s-long-soft: var(--s-long-soft);
   --color-s-cross: var(--s-cross);
   --color-s-cross-soft: var(--s-cross-soft);
+  --color-s-strength: var(--s-strength);
+  --color-s-strength-soft: var(--s-strength-soft);
   --color-s-race: var(--s-race);
   --color-s-race-soft: var(--s-race-soft);
 

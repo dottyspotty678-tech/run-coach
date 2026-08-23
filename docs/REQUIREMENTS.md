@@ -118,9 +118,11 @@ Content, top to bottom:
    the Food tab scrolled to today.
 4. **This week strip**: seven small day tiles (Mon–Sun), today highlighted, each showing the
    session-type icon/abbreviation and a small travel dot on travel days. Tapping any tile
-   opens the Plan tab scrolled to that day. Completed days (a Strava activity exists on that
-   date) show a subtle tick.
-5. **Snapshot row**: two or three small stats — last-7-days km, last-28-days km, and current
+   opens the Plan tab scrolled to that day. Completed days show a subtle tick — type-aware
+   per fix round 1 (U1): the tick appears only when an activity matching the planned session
+   type exists that day.
+5. **Snapshot row**: two or three small stats — last-7-days running km, last-28-days running
+   km (runs only per fix round 1, U1 — rides and gym sessions never count), and current
    training phase. No charts on this screen.
 6. **Sunday-evening special state**: from Sunday 17:00 onward, if next week's plan exists, a
    banner sits above the session card: "Next week's plan is ready — review it" linking to the
@@ -148,7 +150,8 @@ Structural change (required): the plan generation must return **structured per-d
 entries**, not one narrative blob. New shape per day (7 entries, Monday-first):
 
 - `date` (YYYY-MM-DD)
-- `session_type`: one of `rest | easy | tempo | intervals | long | cross | race`
+- `session_type`: one of `rest | easy | tempo | intervals | long | cross | strength | race`
+  (`strength` added in fix round 1 — see the strength-training rule below)
 - `title`: short headline, ≤ 60 chars ("6 × 800 m at 5k effort")
 - `detail`: 1–3 sentences of instruction, including duration or distance
 - `duration_min`: integer estimate (0 for rest)
@@ -171,13 +174,34 @@ Generation logic requirements (the prompt must instruct Claude accordingly):
   and the gap since the last run (not just a single total), and the plan must ramp sensibly
   after a gap rather than assuming continuity.
 - If no race goal is set, plan for general fitness and say so in `week_summary`.
+- **Strength training (Must — added in fix round 1, U2)**: every weekly plan includes exactly
+  two strength sessions (`session_type: strength`), one weekday and one weekend day, defaulting
+  to Tuesday and Saturday unless the calendar makes those impossible (then the nearest sensible
+  days). Strength sessions are ALWAYS gym-based — the user has gym access even when travelling
+  (hotel or nearby); never prescribe bodyweight-only or hotel-room variants. A short strength
+  session may share its day with an easy run.
+- **Running vs supporting training (Must — added in fix round 1, U1)**: only Strava running
+  types (`Run` / `TrailRun` / `VirtualRun`) count as running volume in the generation context;
+  non-run activities are surfaced separately as supporting training (e.g. "plus 2 non-running
+  sessions: 1 ride 40 km, 1 weight training").
+- **Evidence grounding (Must — added in fix round 1, U3)**: the generation prompt embeds a
+  distilled principles block from `docs/evidence-base.md` (the source of truth): ~80% of
+  running volume at low intensity (polarised distribution), strength 2x/week for running
+  economy, REDs safety (never aggressive energy deficits alongside high mileage — reinforces
+  the no-calorie rule), and qualitative-only fuelling/hydration. Grounding is silent — no
+  citations anywhere in the app; sources are cited in code comments only.
+- **Runner context (Must — added in fix round 1, U4)**: the prompt includes a "context from
+  the runner" section — current injuries/niggles plus the last 2–3 weekly feedback notes,
+  most recent weighted heaviest — and the plan respects both (see 3.11).
 
 Plan screen layout:
 
 - `week_summary` at the top, with phase and weeks-to-race.
 - Seven day cards in order, today highlighted and auto-scrolled into view. Each card:
   weekday + date, session-type badge (colour-coded consistently across the app), title,
-  detail, duration, travel indicator, and a tick when a Strava activity exists that day.
+  detail, duration, travel indicator, and a tick when a **matching** Strava activity exists
+  that day (type-aware per fix round 1, U1: run sessions need a run; strength needs a gym
+  activity; cross accepts any non-run; rest never ticks).
 - Below the day cards: a **calendar context strip** — for each day, any travel-flagged events
   and evening events (starting 17:00 or later), titles truncated. A "Full calendar" link
   opens the calendar list screen (3.6).
@@ -249,12 +273,15 @@ one short list. Judged valuable: include it.
 
 **Activity tab** (Should): the training log, for post-run checks and Sunday reflection.
 
-- Top: a simple bar chart of weekly km for the last 8 weeks (current week highlighted), with
-  last-7-day and last-28-day totals beside it. No pace charts, no heart-rate analysis — the
-  detailed toys live in Strava; this app only needs volume and consistency.
+- Top: a simple bar chart of weekly **running** km for the last 8 weeks (current week
+  highlighted), with last-7-day and last-28-day running totals beside it. Running figures
+  count only runs — `Run` / `TrailRun` / `VirtualRun` (fix round 1, U1); rides and gym
+  sessions never inflate them. No pace charts, no heart-rate analysis — the detailed toys
+  live in Strava; this app only needs volume and consistency.
 - Below: reverse-chronological activity list (last 30 days, matching sync window). Each row:
   date, activity name, distance km, moving time, average pace min/km. Runs only get the pace;
-  other types show distance/time. Tapping a row does nothing in v1 (no detail screen).
+  other types are clearly labelled with their activity type and show distance/time only
+  (fix round 1, U1). Tapping a row does nothing in v1 (no detail screen).
 - Empty state: "No activities in the last 30 days" plus a Sync now button; if Strava is not
   connected, a Connect Strava card linking to Settings → Connections.
 
@@ -338,6 +365,26 @@ in-app PIN change in v1).
   (badges, week-strip tiles, chart). No gradients or decorative illustration.
 - Every screen has designed empty, loading (skeleton, not spinner-only page), error and
   offline states as specified above. The stress tester will check each.
+
+### 3.11 Context & feedback (Must — added in fix round 1, U4)
+
+Why: the plan should respect the body it is planning for. The user records (a) current
+injuries or niggles and (b) how the last week of sessions felt; both feed generation.
+
+- **Injuries**: one persistent free-text field ("Current injuries / niggles") that stays
+  until edited or cleared, and is shown back in the UI so it is obvious what the planner
+  believes. Stored in the `runner_context` singleton row.
+- **Weekly feedback**: a short free-text note keyed by `week_start_date` (the Monday of the
+  week it describes), editable until the next plan generates. Stored in `weekly_feedback`.
+- **Generation**: the prompt gains a "CONTEXT FROM THE RUNNER" section — the injuries text
+  plus the last 2–3 feedback notes, most recent weighted heaviest. The plan works around
+  injuries (reduce impact, avoid aggravating sessions) and responds to feedback ("last week
+  felt too hard" → ease the load).
+- **Capture UX**: designer's call on navigation (sixth tab vs a prominent Today card and
+  screen), but at most two taps from open and dead-simple — a 30-second Sunday-evening jot.
+  Backend interface contract: DESIGN.md §8.
+- **Roadmap (not this build)**: a voice-agent capture flow (ElevenLabs) will populate the
+  same free-text fields; the data model deliberately stays transcript-friendly.
 
 ## 4. Content and tone
 

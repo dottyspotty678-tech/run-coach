@@ -27,6 +27,7 @@ const EXEMPT_PATHS = new Set([
 const STATIC_FILE_EXTENSIONS =
   /\.(png|jpg|jpeg|gif|svg|ico|webp|avif|woff2?|ttf|otf|css|js|map|txt|xml|webmanifest)$/i;
 
+// Expects an already-lowercased pathname.
 function isExempt(pathname: string): boolean {
   if (EXEMPT_PATHS.has(pathname)) return true;
   if (EXEMPT_PREFIXES.some((p) => pathname.startsWith(p))) return true;
@@ -37,14 +38,18 @@ function isExempt(pathname: string): boolean {
 
 export async function middleware(request: NextRequest) {
   const { pathname, search } = request.nextUrl;
+  // Route matching in Next is case-sensitive (a mis-cased path 404s anyway),
+  // but classify case-insensitively so /Api/* clients get JSON 401 rather
+  // than an HTML redirect (tester finding m-3).
+  const lower = pathname.toLowerCase();
 
-  if (isExempt(pathname)) return NextResponse.next();
+  if (isExempt(lower)) return NextResponse.next();
 
   const cookie = request.cookies.get(PIN_COOKIE_NAME)?.value;
   if (await isValidPinCookie(cookie)) return NextResponse.next();
 
   // API requests get JSON, never a redirect.
-  if (pathname.startsWith("/api/")) {
+  if (lower.startsWith("/api/")) {
     return NextResponse.json({ error: "Unauthorised" }, { status: 401 });
   }
 

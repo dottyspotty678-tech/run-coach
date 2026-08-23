@@ -106,3 +106,34 @@ drop policy if exists "authenticated full access" on sync_status;
 create policy "authenticated full access" on sync_status for all using (auth.role() = 'authenticated');
 drop policy if exists "authenticated full access" on generation_log;
 create policy "authenticated full access" on generation_log for all using (auth.role() = 'authenticated');
+
+-- ---------------------------------------------------------------------------
+-- Fix round 1 migration (run this block in the Supabase SQL Editor)
+-- Idempotent: safe to run more than once.
+-- ---------------------------------------------------------------------------
+
+-- C-1: make generation failures queryable without Vercel log access.
+alter table generation_log add column if not exists error text;
+
+-- U4: persistent "current injuries / niggles" free text (singleton row).
+-- Free text so a future voice-transcript flow can populate it unchanged.
+create table if not exists runner_context (
+  id boolean primary key default true check (id = true), -- singleton row
+  injuries text not null default '',
+  updated_at timestamptz not null default now()
+);
+
+-- U4: one short feedback note per week, keyed by the Monday it describes.
+create table if not exists weekly_feedback (
+  week_start_date date primary key,
+  feedback text not null,
+  updated_at timestamptz not null default now()
+);
+
+alter table runner_context enable row level security;
+alter table weekly_feedback enable row level security;
+
+drop policy if exists "authenticated full access" on runner_context;
+create policy "authenticated full access" on runner_context for all using (auth.role() = 'authenticated');
+drop policy if exists "authenticated full access" on weekly_feedback;
+create policy "authenticated full access" on weekly_feedback for all using (auth.role() = 'authenticated');

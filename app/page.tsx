@@ -19,12 +19,14 @@ import {
   weekDates,
 } from "@/components/dates";
 import {
-  completedDates,
+  completedCategories,
   getEventsForWeek,
   getPlanForWeek,
   getRecentActivities,
   getSyncStatus,
   lastSuccessfulSync,
+  runKm,
+  sessionDone,
   travelDatesFromEvents,
 } from "@/components/data";
 import { SESSION_META, SessionBadge, MealBadge } from "@/components/session";
@@ -101,12 +103,10 @@ export default async function TodayPage() {
         : `${Math.round(phaseInfo.weeksToRace)} weeks to ${raceGoal.race_name}`
       : null;
 
-  // --- Snapshot stats ---
-  const last7Km = activities
-    .filter((a) => Date.now() - new Date(a.start_date).getTime() <= 7 * 86400000)
-    .reduce((s, a) => s + a.distance_m / 1000, 0);
-  const last28Km = activities.reduce((s, a) => s + a.distance_m / 1000, 0);
-  const done = completedDates(activities);
+  // --- Snapshot stats (running only — U1) ---
+  const last7Km = runKm(activities, 7, now);
+  const last28Km = runKm(activities, undefined, now);
+  const done = completedCategories(activities);
 
   // --- Banners ---
   const lastSync = lastSuccessfulSync(syncStatus);
@@ -256,7 +256,7 @@ export default async function TodayPage() {
               const meta = day ? SESSION_META[day.session_type] : null;
               const isToday = date === today;
               const travel = day ? day.is_travel_day : eventTravelDates.has(date);
-              const isDone = done.has(date);
+              const isDone = sessionDone(day?.session_type, done.get(date));
               return (
                 <Link
                   key={date}

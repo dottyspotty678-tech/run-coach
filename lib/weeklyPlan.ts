@@ -8,7 +8,9 @@ import {
   SESSION_TYPES,
   SHOPPING_CATEGORIES,
   type MealEntry,
+  type MealType,
   type SessionType,
+  type ShoppingCategory,
   type ShoppingItem,
   type TrainingDay,
 } from "@/lib/planTypes";
@@ -16,13 +18,20 @@ import {
   addDays,
   boundaryWeekStart,
   daysBetween,
+  formatDateShort,
   formatDayShort,
   londonDateOf,
   mondayOf,
   todayISO,
   weekDates,
 } from "@/components/dates";
-import { travelDatesFromEvents, type CalendarEventRow } from "@/components/data";
+import {
+  getRecentFeedback,
+  getRunnerContext,
+  isRun,
+  travelDatesFromEvents,
+  type CalendarEventRow,
+} from "@/components/data";
 
 // Target week for planning: the authoritative week-boundary rule
 // (REQUIREMENTS §3.3, implemented in components/dates.ts) — Monday 00:00 to
@@ -40,6 +49,7 @@ type PlanContext = {
     calendarSummary: string;
     raceSummary: string;
     settingsSummary: string;
+    runnerContext: string;
   };
 };
 
@@ -52,52 +62,79 @@ async function buildContext(): Promise<PlanContext> {
 
   const twentyEightDaysAgo = new Date(now.getTime() - 28 * 24 * 60 * 60 * 1000).toISOString();
 
-  const [{ data: activities }, { data: events }, { data: settings }, { data: raceGoal }] =
-    await Promise.all([
-      supabase
-        .from("strava_activities")
-        .select("*")
-        .gte("start_date", twentyEightDaysAgo)
-        .order("start_date", { ascending: false }),
-      supabase
-        .from("calendar_events")
-        .select("external_id, title, start_time, end_time, is_all_day, is_travel")
-        .lt("start_time", `${weekEnd}T00:00:00Z`)
-        .gte("end_time", `${weekStart}T00:00:00Z`)
-        .order("start_time", { ascending: true }),
-      supabase.from("settings").select("*").eq("id", true).maybeSingle(),
-      supabase.from("race_goal").select("*").eq("id", true).maybeSingle(),
-    ]);
+  const [
+    { data: activities },
+    { data: events },
+    { data: settings },
+    { data: raceGoal },
+    runnerContext,
+    recentFeedback,
+  ] = await Promise.all([
+    supabase
+      .from("strava_activities")
+      .select("*")
+      .gte("start_date", twentyEightDaysAgo)
+      .order("start_date", { ascending: false }),
+    supabase
+      .from("calendar_events")
+      .select("external_id, title, start_time, end_time, is_all_day, is_travel")
+      .lt("start_time", `${weekEnd}T00:00:00Z`)
+      .gte("end_time", `${weekStart}T00:00:00Z`)
+      .order("start_time", { ascending: true }),
+    supabase.from("settings").select("*").eq("id", true).maybeSingle(),
+    supabase.from("race_goal").select("*").eq("id", true).maybeSingle(),
+    getRunnerContext(),
+    getRecentFeedback(3, weekStart),
+  ]);
 
-  // Consistency-aware 28-day summary (REQUIREMENTS §3.3): weekly km for each
+  // Running vs supporting training (U1): running volume counts ONLY runs.
+  const all = activities ?? [];
+  const runs = all.filter((a) => isRun(a.type));
+  const nonRuns = all.filter((a) => !isRun(a.type));
+
+  // Consistency-aware 28-day summary (REQUIREMENTS §3.3): running km for each
   // of the last 4 weeks plus the gap since the last run — not one blind total.
   const today = todayISO(now);
   const thisMonday = mondayOf(today);
   const weeklyKm = [0, 0, 0, 0]; // index 0 = the current (partial) week
-  for (const a of activities ?? []) {
+  for (const a of runs) {
     const activityDate = londonDateOf(a.start_date);
     const weeksBack = Math.floor(daysBetween(mondayOf(activityDate), thisMonday) / 7);
     if (weeksBack >= 0 && weeksBack < 4) weeklyKm[weeksBack] += a.distance_m / 1000;
   }
-  const totalDistanceKm = (activities ?? []).reduce((sum, a) => sum + a.distance_m / 1000, 0);
-  const runCount = (activities ?? []).length;
-  const lastActivityDate = activities?.[0]?.start_date
-    ? londonDateOf(activities[0].start_date)
-    : null;
-  const gapDays = lastActivityDate ? daysBetween(lastActivityDate, today) : null;
+  const totalRunKm = runs.reduce((sum, a) => sum + a.distance_m / 1000, 0);
+  const lastRunDate = runs[0]?.start_date ? londonDateOf(runs[0].start_date) : null;
+  const gapDays = lastRunDate ? daysBetween(lastRunDate, today) : null;
 
-  const trainingSummary = runCount
+  // Supporting sessions summary, e.g. "2 x WeightTraining; 1 x Ride (40 km)".
+  const nonRunByType = new Map<string, { count: number; km: number }>();
+  for (const a of nonRuns) {
+    const entry = nonRunByType.get(a.type) ?? { count: 0, km: 0 };
+    entry.count += 1;
+    entry.km += a.distance_m / 1000;
+    nonRunByType.set(a.type, entry);
+  }
+  const nonRunSummary =
+    nonRuns.length > 0
+      ? `Plus ${nonRuns.length} non-running session${nonRuns.length === 1 ? "" : "s"} (supporting training, not running volume): ${[...nonRunByType.entries()]
+          .map(([type, e]) => `${e.count} x ${type}${e.km >= 1 ? ` (${e.km.toFixed(0)} km)` : ""}`)
+          .join("; ")}.`
+      : "No non-running sessions in the last 28 days.";
+
+  // Dates in user-facing style (m-1): "15 Aug", never raw ISO.
+  const trainingSummary = runs.length
     ? [
-        `${runCount} activities in the last 28 days, totalling ${totalDistanceKm.toFixed(1)} km.`,
-        `Weekly volume, most recent first: ${weeklyKm
+        `${runs.length} runs in the last 28 days, totalling ${totalRunKm.toFixed(1)} km.`,
+        `Weekly running volume, most recent first: ${weeklyKm
           .map(
             (km, i) =>
               `${i === 0 ? "this week so far" : `${i} week${i > 1 ? "s" : ""} ago`}: ${km.toFixed(1)} km`
           )
           .join("; ")}.`,
-        `Last activity: ${lastActivityDate} (${gapDays} day${gapDays === 1 ? "" : "s"} ago).`,
+        `Last run: ${formatDateShort(lastRunDate!)} (${gapDays} day${gapDays === 1 ? "" : "s"} ago).`,
+        nonRunSummary,
       ].join("\n")
-    : "No Strava activities synced in the last 28 days — treat the runner as returning from a break and ramp up cautiously.";
+    : `No runs synced in the last 28 days — treat the runner as returning from a break and ramp up cautiously.\n${nonRunSummary}`;
 
   const eventRows = (events ?? []) as CalendarEventRow[];
   const travelDates = [...travelDatesFromEvents(eventRows, weekDatesList)].sort();
@@ -122,8 +159,10 @@ async function buildContext(): Promise<PlanContext> {
       raceGoal.distance_km,
       now
     );
-    raceSummary = `Target race: ${raceGoal.race_name}, ${raceGoal.distance_km}km on ${raceGoal.race_date}${
-      raceGoal.target_time ? ` (target time: ${raceGoal.target_time})` : ""
+    raceSummary = `Target race: ${raceGoal.race_name}, ${raceGoal.distance_km}km on ${formatDateShort(
+      raceGoal.race_date
+    )} (${raceGoal.race_date.slice(0, 4)})${
+      raceGoal.target_time ? `, target time ${raceGoal.target_time}` : ""
     }. Currently ${weeksToRace.toFixed(1)} weeks out, training phase: ${phase}.`;
   }
 
@@ -135,13 +174,56 @@ async function buildContext(): Promise<PlanContext> {
       }. Household size: ${settings.household_size}.`
     : "No settings configured — assume no restrictions, household size 1, maintaining weight.";
 
+  // Context from the runner (U4): persistent injuries + recent week feedback,
+  // most recent weighted heaviest.
+  const injuriesLine = runnerContext?.injuries?.trim()
+    ? `Current injuries or niggles: ${runnerContext.injuries.trim()}`
+    : "Current injuries or niggles: none reported.";
+  const feedbackLines =
+    recentFeedback.length > 0
+      ? recentFeedback
+          .map(
+            (f, i) =>
+              `- Week starting ${formatDateShort(f.week_start_date)}${
+                i === 0 ? " (most recent — weight this heaviest)" : ""
+              }: "${f.feedback.trim()}"`
+          )
+          .join("\n")
+      : "- No feedback recorded for recent weeks.";
+  const runnerContextSection = `${injuriesLine}\nHow recent weeks felt, most recent first:\n${feedbackLines}`;
+
   return {
     weekStart,
     weekDatesList,
     travelDates,
-    sections: { trainingSummary, calendarSummary, raceSummary, settingsSummary },
+    sections: {
+      trainingSummary,
+      calendarSummary,
+      raceSummary,
+      settingsSummary,
+      runnerContext: runnerContextSection,
+    },
   };
 }
+
+// Evidence-grounded coaching principles (U3), distilled from
+// docs/evidence-base.md — the source of truth for future updates. Cited items
+// (code-comment only; never surfaced in the app):
+// - Item 7 (Haugen et al. 2022), 8 (Stöggl & Sperlich 2015), 9 (Oliveira et
+//   al. 2024) and 10 (Muñoz/Seiler 2014): ~80% of running volume at low
+//   intensity (polarised distribution), for recreational runners too.
+// - Item 11 (Llanos-Lagos et al. 2024, building on Blagrove 2018): strength
+//   training 2x/week with substantive loading improves running economy.
+// - Item 5 (IOC REDs consensus 2023): never aggressive energy restriction
+//   alongside high mileage — the safety layer behind the no-calorie rule.
+// - Items 1 (AND/DC/ACSM 2016), 2 (ISSN nutrient timing 2017) and 6 (ACSM
+//   fluid replacement 2007): carbohydrate-forward fuelling around hard/long
+//   sessions and sensible hydration, kept qualitative in this app.
+const EVIDENCE_PRINCIPLES = `TRAINING AND NUTRITION PRINCIPLES (evidence-based — follow these):
+- Keep roughly 80% of the week's running volume at low, conversational intensity; concentrate hard work into one or two quality sessions (polarised intensity distribution).
+- Two gym-based strength sessions per week with substantive loading support running economy — they complement the running, they do not replace it.
+- Never pair high running mileage with aggressive energy restriction. Even when the weight goal is "lose", keep meals satisfying and fuel hard days properly — under-fuelling harms both health and performance.
+- Fuelling and hydration guidance stays qualitative: carb-forward meals before and after hard or long sessions, drink sensibly around training. No numbers, ever.`;
 
 // Tool schema mirroring lib/planTypes.ts exactly — one call returns training,
 // meals and shopping list together (REQUIREMENTS §5.4: never split the call).
@@ -284,10 +366,18 @@ ${context.sections.calendarSummary}
 PERSONAL SETTINGS:
 ${context.sections.settingsSummary}
 
+CONTEXT FROM THE RUNNER:
+${context.sections.runnerContext}
+
+${EVIDENCE_PRINCIPLES}
+
 TRAINING RULES:
 - Phase-appropriate sessions: protect the long run in base/build, sharpen in peak, visibly cut load in taper and race week, prescribe recovery post-race. If no race is set, plan for general fitness and say so in week_summary.
-- Ramp sensibly after any gap in the history above — never assume continuity that is not there.
-- Hard and long sessions go on non-travel days where possible. Travel days get rest, easy runs, or short hotel-friendly sessions (for example "30 min easy from the hotel — out-and-back, no route needed").
+- Ramp sensibly after any gap in the history above — never assume continuity that is not there. Only running counts as running volume; rides and gym work are supporting training.
+- Respect the runner's context above: work around any injuries or niggles (reduce impact or intensity, avoid aggravating session types) and respond to how recent weeks felt — if last week felt too hard, ease this week's load; if it felt easy, progress gently.
+- Include exactly two strength sessions this week (session_type "strength"): one on a weekday and one on a weekend day, defaulting to Tuesday and Saturday unless the calendar makes those impossible — then the nearest sensible weekday/weekend day.
+- Strength sessions are ALWAYS gym-based: assume access to a proper gym even when travelling (hotel gym or one nearby). Never prescribe bodyweight-only or hotel-room workarounds. A short strength session may share its day with an easy run — keep session_type "strength" and fold the run into the detail.
+- Hard and long running sessions go on non-travel days where possible. Travel days get rest, easy runs, strength (gyms travel with you), or short hotel-friendly runs (for example "30 min easy from the hotel — out-and-back, no route needed").
 - Set is_travel_day true only for the travel dates listed above.
 - duration_min is 0 for rest days. Rest days still get a proper title, detail and why — never an empty entry.
 
@@ -305,7 +395,8 @@ SHOPPING LIST RULES:
 - quantity_note is qualitative ("2 large", "1 bag", "small bunch") — no weights unless natural (for example "500 g passata").
 
 STYLE RULES (strict):
-- UK English throughout (-ise endings) and metric units only (km, min/km).
+- UK English throughout: -ise endings, chilli not chili, yoghurt not yogurt. Metric units only (km, min/km).
+- Write any date inside text in the style "15 Aug" — never as an ISO date like 2026-08-15.
 - Coach voice: concise, practical, direct instructions with one line of rationale — like a good club coach texting, not a fitness influencer. No exclamation marks. No emoji.
 - Qualitative guidance only: never mention calories, kilojoules, macros, points or body-weight targets, and make no medical claims.
 - Recipe names plain and appetising; methods at most 4 short steps, written for a tired person at 20:30.`;
@@ -325,102 +416,44 @@ type ValidatedPlan = {
   shopping_list: ShoppingItem[];
 };
 
-/**
- * Validates a tool response against the runtime guards in lib/planTypes.ts
- * plus the business rules (dates, travel echo). Returns the validated plan,
- * or a list of human-readable errors to feed back into the retry prompt.
- */
-function validatePlan(
-  raw: RawPlan,
-  context: PlanContext
-): { plan: ValidatedPlan | null; errors: string[] } {
-  const errors: string[] = [];
-  const travelSet = new Set(context.travelDates);
+// ---------------------------------------------------------------------------
+// Coercion (fix round 1, C-1): validation catches malformed structure, it does
+// not fight the model. Minor deviations are clamped to the nearest valid value
+// and logged as warnings; hard failures remain only for missing days/dates.
+// ---------------------------------------------------------------------------
 
-  if (typeof raw.week_summary !== "string" || raw.week_summary.trim() === "") {
-    errors.push("week_summary must be a non-empty string.");
-  }
+function isRecord(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
 
-  const trainingDays: TrainingDay[] = [];
-  if (!Array.isArray(raw.training_days) || raw.training_days.length !== 7) {
-    errors.push("training_days must be an array of exactly 7 entries.");
+function coerceString(v: unknown, fallback = ""): string {
+  if (typeof v === "string") return v;
+  if (typeof v === "number") return String(v);
+  return fallback;
+}
+
+function coerceMinutes(v: unknown): number {
+  const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
+  return Number.isFinite(n) ? Math.max(0, Math.round(n)) : 0;
+}
+
+/** Nearest valid session type for an off-enum value. */
+function coerceSessionType(v: unknown, warnings: string[]): SessionType {
+  if (typeof v === "string") {
+    const s = v.toLowerCase().trim();
+    if ((SESSION_TYPES as readonly string[]).includes(s)) return s as SessionType;
+    warnings.push(`Coerced unknown session_type "${v}"`);
+    if (s.includes("strength") || s.includes("gym") || s.includes("weight")) return "strength";
+    if (s.includes("interval") || s.includes("speed") || s.includes("track")) return "intervals";
+    if (s.includes("tempo") || s.includes("threshold")) return "tempo";
+    if (s.includes("long")) return "long";
+    if (s.includes("race")) return "race";
+    if (s.includes("rest") || s.includes("off")) return "rest";
+    if (s.includes("cross") || s.includes("bike") || s.includes("swim")) return "cross";
   } else {
-    raw.training_days.forEach((d, i) => {
-      if (!isTrainingDay(d)) {
-        errors.push(
-          `training_days[${i}] is malformed — required: date, session_type (${SESSION_TYPES.join(
-            "/"
-          )}), title, detail, duration_min (number), why, is_travel_day (boolean).`
-        );
-        return;
-      }
-      if (d.date !== context.weekDatesList[i]) {
-        errors.push(
-          `training_days[${i}].date must be ${context.weekDatesList[i]} (got ${d.date}).`
-        );
-        return;
-      }
-      // Echo the calendar's travel flags exactly, whatever the model said.
-      trainingDays.push({ ...d, is_travel_day: travelSet.has(d.date) });
-    });
+    warnings.push("Coerced missing session_type");
   }
-
-  const meals: MealEntry[] = [];
-  if (!Array.isArray(raw.meals) || raw.meals.length !== 7) {
-    errors.push("meals must be an array of exactly 7 entries.");
-  } else {
-    raw.meals.forEach((m, i) => {
-      if (!isMealEntry(m)) {
-        errors.push(
-          `meals[${i}] is malformed — required: date, meal_type (home/travel/assemble), prep_time_min (number), recipe_name, ingredients (array of strings), short_instructions.`
-        );
-        return;
-      }
-      if (m.date !== context.weekDatesList[i]) {
-        errors.push(`meals[${i}].date must be ${context.weekDatesList[i]} (got ${m.date}).`);
-        return;
-      }
-      if (travelSet.has(m.date) && m.meal_type !== "travel") {
-        errors.push(
-          `meals[${i}] (${m.date}) is a travel day and must have meal_type "travel" with empty ingredients and eating-out guidance.`
-        );
-        return;
-      }
-      if (m.meal_type === "travel" && m.ingredients.length > 0) {
-        errors.push(`meals[${i}] (${m.date}) is a travel meal and must have empty ingredients.`);
-        return;
-      }
-      meals.push(m.meal_type === "travel" ? { ...m, prep_time_min: 0, ingredients: [] } : m);
-    });
-  }
-
-  const shoppingList: ShoppingItem[] = [];
-  if (!Array.isArray(raw.shopping_list)) {
-    errors.push("shopping_list must be an array (empty is allowed for an all-travel week).");
-  } else {
-    raw.shopping_list.forEach((s, i) => {
-      if (!isShoppingItem(s)) {
-        errors.push(
-          `shopping_list[${i}] is malformed — required: item, quantity_note, category (one of: ${SHOPPING_CATEGORIES.join(
-            ", "
-          )}).`
-        );
-        return;
-      }
-      shoppingList.push(s);
-    });
-  }
-
-  if (errors.length > 0) return { plan: null, errors };
-  return {
-    plan: {
-      week_summary: (raw.week_summary as string).trim(),
-      training_days: trainingDays,
-      meals,
-      shopping_list: shoppingList,
-    },
-    errors: [],
-  };
+  return "easy";
 }
 
 const SESSION_LABELS: Record<SessionType, string> = {
@@ -430,8 +463,186 @@ const SESSION_LABELS: Record<SessionType, string> = {
   intervals: "Intervals",
   long: "Long run",
   cross: "Cross-training",
+  strength: "Strength",
   race: "Race",
 };
+
+function coerceTrainingDay(
+  raw: Record<string, unknown>,
+  date: string,
+  isTravel: boolean,
+  warnings: string[]
+): TrainingDay {
+  const session_type = coerceSessionType(raw.session_type, warnings);
+  const title = coerceString(raw.title, SESSION_LABELS[session_type]);
+  return {
+    date,
+    session_type,
+    title,
+    detail: coerceString(raw.detail, title),
+    duration_min: coerceMinutes(raw.duration_min),
+    why: coerceString(raw.why),
+    // Echo the calendar's travel flags exactly, whatever the model said.
+    is_travel_day: isTravel,
+  };
+}
+
+function coerceMeal(
+  raw: Record<string, unknown>,
+  date: string,
+  isTravel: boolean,
+  warnings: string[]
+): MealEntry {
+  let meal_type: MealType;
+  if (isTravel) {
+    if (raw.meal_type !== "travel") warnings.push(`Coerced ${date} meal to travel (travel day)`);
+    meal_type = "travel";
+  } else if (
+    raw.meal_type === "home" ||
+    raw.meal_type === "travel" ||
+    raw.meal_type === "assemble"
+  ) {
+    meal_type = raw.meal_type;
+  } else {
+    warnings.push(`Coerced unknown meal_type "${String(raw.meal_type)}" on ${date} to home`);
+    meal_type = "home";
+  }
+  const ingredients =
+    meal_type === "travel"
+      ? []
+      : Array.isArray(raw.ingredients)
+        ? raw.ingredients.map((i) => coerceString(i)).filter(Boolean)
+        : [];
+  return {
+    date,
+    meal_type,
+    prep_time_min: meal_type === "travel" ? 0 : coerceMinutes(raw.prep_time_min),
+    recipe_name: coerceString(raw.recipe_name, meal_type === "travel" ? "Eating out" : "Dinner"),
+    ingredients,
+    short_instructions: coerceString(raw.short_instructions),
+  };
+}
+
+/**
+ * Validates a tool response. Structure-level problems (missing arrays, wrong
+ * day counts, wrong date sets) are hard errors fed back into the retry
+ * prompt; everything else is coerced with a warning.
+ */
+function validatePlan(
+  raw: RawPlan,
+  context: PlanContext
+): { plan: ValidatedPlan | null; errors: string[]; warnings: string[] } {
+  const errors: string[] = [];
+  const warnings: string[] = [];
+  const travelSet = new Set(context.travelDates);
+
+  let weekSummary = "";
+  if (typeof raw.week_summary === "string" && raw.week_summary.trim() !== "") {
+    weekSummary = raw.week_summary.trim();
+  } else {
+    warnings.push("week_summary missing — used a generic fallback");
+    weekSummary = "Training and meals for the week ahead.";
+  }
+
+  // Training days: hard-fail only when the 7 expected dates cannot be matched.
+  const trainingDays: TrainingDay[] = [];
+  if (!Array.isArray(raw.training_days)) {
+    errors.push("training_days must be an array of exactly 7 entries, Monday first.");
+  } else {
+    const byDate = new Map<string, Record<string, unknown>>();
+    for (const d of raw.training_days) {
+      if (isRecord(d) && typeof d.date === "string") byDate.set(d.date, d);
+    }
+    for (const date of context.weekDatesList) {
+      const entry = byDate.get(date);
+      if (!entry) {
+        errors.push(`training_days is missing an entry for ${date}.`);
+        continue;
+      }
+      trainingDays.push(coerceTrainingDay(entry, date, travelSet.has(date), warnings));
+    }
+  }
+
+  // Meals: same date-matching rule.
+  const meals: MealEntry[] = [];
+  if (!Array.isArray(raw.meals)) {
+    errors.push("meals must be an array of exactly 7 entries, Monday first.");
+  } else {
+    const byDate = new Map<string, Record<string, unknown>>();
+    for (const m of raw.meals) {
+      if (isRecord(m) && typeof m.date === "string") byDate.set(m.date, m);
+    }
+    for (const date of context.weekDatesList) {
+      const entry = byDate.get(date);
+      if (!entry) {
+        errors.push(`meals is missing an entry for ${date}.`);
+        continue;
+      }
+      meals.push(coerceMeal(entry, date, travelSet.has(date), warnings));
+    }
+  }
+
+  // Shopping list: never a hard failure beyond "not an array" — bad items are
+  // repaired or dropped.
+  const shoppingList: ShoppingItem[] = [];
+  if (!Array.isArray(raw.shopping_list)) {
+    errors.push("shopping_list must be an array (empty is allowed for an all-travel week).");
+  } else {
+    for (const s of raw.shopping_list) {
+      if (!isRecord(s)) continue;
+      const item = coerceString(s.item).trim();
+      if (!item) {
+        warnings.push("Dropped a shopping item with no name");
+        continue;
+      }
+      let category = s.category as ShoppingCategory;
+      if (!SHOPPING_CATEGORIES.includes(category)) {
+        warnings.push(`Coerced shopping category "${String(s.category)}" to other`);
+        category = "other";
+      }
+      shoppingList.push({ item, quantity_note: coerceString(s.quantity_note), category });
+    }
+  }
+
+  if (errors.length > 0) return { plan: null, errors, warnings };
+
+  // Soft checks (warn only — never fail generation).
+  const strengthCount = trainingDays.filter((d) => d.session_type === "strength").length;
+  if (strengthCount !== 2) {
+    warnings.push(`Plan has ${strengthCount} strength sessions (expected 2 — U2)`);
+  }
+
+  // Final assertion with the shared runtime guards — coercion should make
+  // these pass by construction. (Callback parameters are typed as unknown so
+  // the negated type guards do not narrow the elements to never.)
+  const guardFailures = [
+    ...trainingDays
+      .filter((d: unknown) => !isTrainingDay(d))
+      .map((d) => `training day ${(d as TrainingDay).date}`),
+    ...meals.filter((m: unknown) => !isMealEntry(m)).map((m) => `meal ${(m as MealEntry).date}`),
+    ...shoppingList
+      .filter((s: unknown) => !isShoppingItem(s))
+      .map((s) => `shopping item ${(s as ShoppingItem).item}`),
+  ];
+  if (guardFailures.length > 0) {
+    return {
+      plan: null,
+      errors: [`Internal guard failure after coercion: ${guardFailures.join(", ")}`],
+      warnings,
+    };
+  }
+
+  return {
+    plan: {
+      week_summary: weekSummary,
+      training_days: trainingDays,
+      meals,
+      shopping_list: shoppingList,
+    },
+    errors: [],
+    warnings,
+  };
+}
 
 /** Plain-text render of the structured plan, kept for the legacy training_plan_text column. */
 function renderPlanText(plan: ValidatedPlan): string {
@@ -450,15 +661,23 @@ async function callClaude(prompt: string): Promise<RawPlan> {
   const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
   const response = await anthropic.messages.create({
     model: "claude-sonnet-5",
-    max_tokens: 8192,
+    max_tokens: 12288,
     tools: [WEEKLY_PLAN_TOOL],
     tool_choice: { type: "tool", name: "provide_weekly_plan" },
     messages: [{ role: "user", content: prompt }],
   });
 
+  // A truncated tool call produces incomplete input — surface that cause
+  // explicitly rather than failing as a mysterious validation error (C-1).
+  if (response.stop_reason === "max_tokens") {
+    throw new Error("Plan generation hit the output token limit — the response was truncated");
+  }
+
   const toolUse = response.content.find((c) => c.type === "tool_use");
   if (!toolUse || toolUse.type !== "tool_use") {
-    throw new Error("Claude did not return a structured plan");
+    throw new Error(
+      `Claude did not return a structured plan (stop_reason: ${response.stop_reason ?? "unknown"})`
+    );
   }
   return toolUse.input as RawPlan;
 }
@@ -486,14 +705,20 @@ export async function generateWeeklyPlan(options?: { syncNotes?: string[] }) {
 
     const raw = await callClaude(prompt);
     const result = validatePlan(raw, context);
+    if (result.warnings.length > 0) {
+      console.warn("Weekly plan generation warnings:", result.warnings);
+    }
     if (result.plan) validated = result.plan;
     else lastErrors = result.errors;
   }
 
   if (!validated) {
     // Fail WITHOUT touching the stored row — the previous plan stays intact.
+    const detail = lastErrors.join(" | ");
     console.error("Weekly plan generation failed validation twice:", lastErrors);
-    throw new Error("The generated plan failed validation — the previous plan is unchanged");
+    throw new Error(
+      `The generated plan failed validation twice (previous plan unchanged): ${detail}`
+    );
   }
 
   const supabase = createServiceClient();

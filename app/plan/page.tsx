@@ -14,10 +14,11 @@ import {
   weekDates,
 } from "@/components/dates";
 import {
-  completedDates,
+  completedCategories,
   getEventsForWeek,
   getPlanForWeek,
   getRecentActivities,
+  sessionDone,
   travelDatesFromEvents,
   type CalendarEventRow,
 } from "@/components/data";
@@ -53,7 +54,7 @@ export default async function PlanPage() {
     : null;
 
   const days = parseTrainingDays(plan);
-  const done = completedDates(activities);
+  const done = completedCategories(activities);
   const eventTravel = travelDatesFromEvents(events, dates);
 
   // Calendar context strip: per day, travel-flagged events and evening events
@@ -143,7 +144,7 @@ export default async function PlanPage() {
                           {isToday && " · Today"}
                         </span>
                         <span className="flex items-center gap-1.5">
-                          {done.has(day.date) && (
+                          {sessionDone(day.session_type, done.get(day.date)) && (
                             <IconTick size={15} strokeWidth={2.6} style={{ color: "var(--ok)" }} />
                           )}
                           {day.is_travel_day && (

@@ -23,6 +23,12 @@ export const SESSION_META: Record<
     color: "var(--s-cross)",
     soft: "var(--s-cross-soft)",
   },
+  strength: {
+    label: "Strength",
+    abbrev: "Str",
+    color: "var(--s-strength)",
+    soft: "var(--s-strength-soft)",
+  },
   race: { label: "Race", abbrev: "Race", color: "var(--s-race)", soft: "var(--s-race-soft)" },
 };
 
