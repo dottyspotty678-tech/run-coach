@@ -250,7 +250,7 @@ const WEEKLY_PLAN_TOOL = {
       week_summary: {
         type: "string",
         description:
-          "2-3 sentences: the intent of the week, target weekly kilometres, and the training phase. If no race is set, say the plan targets general fitness.",
+          "2-3 sentences: the intent of the week, target weekly kilometres, and the training phase. Any total volume you state MUST equal what the seven training_days entries actually add up to — recount the sessions before writing it (tester finding f-1: a summary once claimed 4.5-5 km against ~14 km of prescribed sessions). If no race is set, say the plan targets general fitness.",
       },
       training_days: {
         type: "array",
