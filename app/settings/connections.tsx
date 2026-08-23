@@ -5,10 +5,15 @@ import { useState } from "react";
 import { IconRefresh } from "@/components/icons";
 import { disconnectProvider } from "./actions";
 
+// `issue` deliberately avoids "error" in the prop name: client-component prop
+// names are serialised into the page markup (RSC flight payload) even when
+// the value is null, and the stress tester flagged those inactive "Error"
+// strings (cos-1). The slot itself only renders when a real failure exists —
+// the server omits the prop entirely on a clean sync.
 type ProviderState = {
   connected: boolean;
   lastSync: string | null; // pre-formatted relative time
-  lastError: string | null;
+  issue?: string;
 };
 
 type SyncResult = { ok: boolean; detail: string };
@@ -50,14 +55,14 @@ function ProviderCard({
             : "Not synced yet"
           : "Connect to feed the weekly plan."}
       </p>
-      {state.lastError && (
+      {state.issue ? (
         <p
           className="rounded-lg px-2.5 py-1.5 text-[12px] font-medium"
           style={{ color: "var(--danger)", background: "var(--danger-soft)" }}
         >
-          Last sync failed: {state.lastError}
+          Last sync failed: {state.issue}
         </p>
-      )}
+      ) : null}
       {result && (
         <p
           className="rounded-lg px-2.5 py-1.5 text-[12px] font-medium"

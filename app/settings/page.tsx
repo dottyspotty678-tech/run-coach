@@ -1,9 +1,11 @@
+import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getTrainingPhase } from "@/lib/trainingPhase";
 import { isStravaConnected } from "@/lib/strava";
 import { isMicrosoftConnected } from "@/lib/microsoft";
 import { relativeTime, todayISO } from "@/components/dates";
 import { getSyncStatus } from "@/components/data";
+import { IconChevronRight } from "@/components/icons";
 import { RaceForm } from "./race-form";
 import { FoodForm } from "./food-form";
 import { Connections } from "./connections";
@@ -115,15 +117,30 @@ export default async function SettingsPage() {
           strava={{
             connected: stravaConnected,
             lastSync: relativeTime(syncStatus.strava?.last_synced_at, now),
-            lastError: syncStatus.strava?.last_error ?? null,
+            // Omit the prop entirely on a clean sync (cos-1) — see connections.tsx.
+            ...(syncStatus.strava?.last_error ? { issue: syncStatus.strava.last_error } : {}),
           }}
           microsoft={{
             connected: microsoftConnected,
             lastSync: relativeTime(syncStatus.microsoft?.last_synced_at, now),
-            lastError: syncStatus.microsoft?.last_error ?? null,
+            ...(syncStatus.microsoft?.last_error
+              ? { issue: syncStatus.microsoft.last_error }
+              : {}),
           }}
         />
       </section>
+
+      {/* Context & feedback lives on its own screen (/checkin); this row keeps
+          it reachable from Settings too (§3.11). */}
+      <Link href="/checkin" className="card flex min-h-[56px] items-center gap-3 px-4 py-3">
+        <span className="min-w-0 flex-1">
+          <span className="block text-[15px] font-semibold">Check-in</span>
+          <span className="block text-[13px]" style={{ color: "var(--ink-2)" }}>
+            Injuries and weekly feedback for the planner
+          </span>
+        </span>
+        <IconChevronRight size={16} strokeWidth={2.2} className="shrink-0" style={{ color: "var(--ink-3)" }} />
+      </Link>
 
       <footer className="pb-2 text-center text-[12px]" style={{ color: "var(--ink-3)" }}>
         Run Coach v{pkg.version} · PIN protected — change the PIN via the server configuration

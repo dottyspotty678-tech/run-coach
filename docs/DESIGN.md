@@ -117,6 +117,8 @@ Numbers in stats use `font-variant-numeric: tabular-nums`.
 | Tag input | `app/settings/food-form.tsx` | Type + add, tap to remove; writes hidden comma-joined field (keeps server-action field names). |
 | Stepper | `app/settings/food-form.tsx` | Household size 1–6. |
 | PIN keypad | `app/pin/pin-pad.tsx` | 4 dots, 0–9 + delete, auto-submit on 4th digit, shake on 401, countdown lockout on 429. |
+| Check-in forms | `app/checkin/checkin-forms.tsx` | Two textareas, one Save each: weekly note (keyed to the week containing today) and persistent injuries with "Clear — all healed". Fix round 1, U4. |
+| Check-in row (Today) | rendered in `app/page.tsx` | Persistent one-tap entry under the meal card; doubles as the injuries read-back ("Working around: …"). |
 | Skeletons | `loading.tsx` per route + `.skeleton` utility | Reserve final layout space; visible < 500 ms. |
 | Empty states | per screen | Icon-free, one sentence + one action, per REQUIREMENTS §3. |
 
@@ -137,10 +139,23 @@ Secondary screens (back affordance in header, no tab highlight):
 - **PIN screen** — `/pin`, rendered by middleware for unauthenticated requests; verifies via
   `POST /api/pin/verify` with `{ pin: string }` → 200 (cookie set, redirect `/`), 401 (wrong),
   429 + `{ retryAfterSeconds: number }` (lockout).
+- **Check-in** — `/checkin` (fix round 1, U4), reached from the persistent Today row, the Plan
+  week-summary link, the Settings row, and the Sunday nudge banner on Today.
 
 Cross-links: Today session card → none (it *is* the answer); Today meal card → `/food#d{date}`;
-week-strip tile → `/plan#d{date}`; plan-ready banner → `/plan`; disconnected banner →
-`/settings#connections`; Activity empty state → `/settings#connections`.
+week-strip tile → `/plan#d{date}`; Sunday-evening "Plan ready — review it" strip link →
+`/plan` (see the Sunday note below); Today check-in row and Sunday check-in nudge →
+`/checkin`; disconnected banner → `/settings#connections`; Activity empty state →
+`/settings#connections`.
+
+**Sunday-evening state (reworked in fix round 1, m-2).** From Sunday 17:00 the whole app
+already shows the upcoming week (§3.3 boundary), so a separate "Next week's plan is ready"
+banner double-messaged the very week the strip was displaying. Single-voiced treatment now:
+the week-strip heading flips from "This week" to "Next week", with an inline accent link
+"Plan ready — review it" (→ `/plan`) when the plan exists, or a quiet "No plan yet —
+generating this evening" note when the cron has not landed. The hero card still shows
+*today's* (Sunday's) session from the ending week — the answer to "what should I do tonight?"
+never changes meaning.
 
 ## 7. Interfaces the backend must honour (UI already reads these)
 
@@ -187,6 +202,29 @@ Saved notes influence the next generation automatically — no extra wiring.
 
 Roadmap note: both fields are plain free text so a voice-agent transcript
 (ElevenLabs, out of scope) can be written through these same actions.
+
+### Capture UI placement (designer decision, fix round 1)
+
+The user asked for "a tab". Deliberately **not** a sixth tab, for three reasons:
+
+1. **Usage shape.** Tabs are for destinations you visit most days; the check-in is a
+   ~once-a-week, 30-second jot. A sixth tab would sit inert six days out of seven and dilute
+   the five real destinations.
+2. **Ergonomics at 320 px.** Six items shrink each tap target from ~64 px to ~53 px and crowd
+   the labels — against the ≥ 44 px comfortable-target rule this system is built on.
+3. **Reachability is what the user actually wants.** The chosen treatment beats a tab on the
+   stated constraint (≤ 2 taps from open): a **persistent one-tap row on Today** (which also
+   serves §3.11's "shown back clearly" requirement — it displays "Working around: {injuries}"
+   every single day), a **Sunday nudge banner on Today** when the week's note is empty (the
+   planning-ritual moment), plus links from the Plan week summary and Settings.
+
+The capture screen itself is `/checkin` — a secondary screen (back affordance, no tab
+highlight, like `/calendar`): two textareas and two Save buttons, nothing else. The weekly
+note is keyed to `mondayOf(today)` — the week being *described* — deliberately not the
+boundary week, so a note written on Sunday at 21:00 still refers to the week that just
+happened. Injuries show a read-back line ("The planner is working around: …" /
+"The planner believes you are injury-free") above the edit field, with a one-tap
+"Clear — all healed" action.
 
 ## 9. States checklist (stress-tester map)
 

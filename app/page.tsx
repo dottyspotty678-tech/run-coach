@@ -13,6 +13,7 @@ import {
   boundaryWeekStart,
   formatDayShort,
   isSundayEvening,
+  londonParts,
   mondayOf,
   relativeTime,
   todayISO,
@@ -23,6 +24,8 @@ import {
   getEventsForWeek,
   getPlanForWeek,
   getRecentActivities,
+  getRecentFeedback,
+  getRunnerContext,
   getSyncStatus,
   lastSuccessfulSync,
   runKm,
@@ -33,7 +36,7 @@ import { SESSION_META, SessionBadge, MealBadge } from "@/components/session";
 import { Banner } from "@/components/banner";
 import { GeneratePlanButton } from "@/components/generate-plan";
 import { PullRefresh } from "@/components/pull-refresh";
-import { IconTick } from "@/components/icons";
+import { IconChevronRight, IconTick } from "@/components/icons";
 
 // Reads the DB on every request — never serve a stale prerender.
 export const dynamic = "force-dynamic";
@@ -61,6 +64,8 @@ export default async function TodayPage() {
     syncStatus,
     events,
     raceGoalRes,
+    runnerContext,
+    recentFeedback,
   ] = await Promise.all([
     getPlanForWeek(heroWeekStart),
     stripWeekStart === heroWeekStart
@@ -72,6 +77,8 @@ export default async function TodayPage() {
     getSyncStatus(),
     getEventsForWeek(stripWeekStart),
     supabase.from("race_goal").select("*").eq("id", true).maybeSingle(),
+    getRunnerContext(),
+    getRecentFeedback(1),
   ]);
 
   const shownStripPlan = stripWeekStart === heroWeekStart ? heroPlan : stripPlan;
@@ -114,7 +121,19 @@ export default async function TodayPage() {
     lastSync !== null && now.getTime() - new Date(lastSync).getTime() > 24 * 3600000;
   const stravaBroken = !stravaConnected || !!syncStatus.strava?.last_error;
   const microsoftBroken = !microsoftConnected || !!syncStatus.microsoft?.last_error;
-  const planReady = isSundayEvening(now) && shownStripPlan !== null;
+
+  // --- Sunday evening (m-2 rework): from 17:00 the whole app already shows
+  // next week, so "plan ready" frames the week strip instead of shouting from
+  // a separate banner about the same week the user is looking at.
+  const sundayEvening = isSundayEvening(now);
+  const planReady = sundayEvening && shownStripPlan !== null;
+
+  // --- Check-in (§3.11): Sunday nudge when this week's note is still empty.
+  const isSunday = londonParts(now).weekday === 7;
+  const hasThisWeeksFeedback = recentFeedback.some(
+    (f) => f.week_start_date === heroWeekStart
+  );
+  const showCheckinNudge = isSunday && !hasThisWeeksFeedback;
 
   // --- Strip sessions (travel fallback from events when plan is old-format) ---
   const stripDays = parseTrainingDays(shownStripPlan);
@@ -150,9 +169,9 @@ export default async function TodayPage() {
         </header>
 
         {/* Banners */}
-        {planReady && (
-          <Banner variant="info" href="/plan" linkLabel="Review it">
-            Next week's plan is ready
+        {showCheckinNudge && (
+          <Banner variant="info" href="/checkin" linkLabel="Check in">
+            How did this week feel? A 30-second note shapes next week's plan
           </Banner>
         )}
         {stravaBroken && (
@@ -245,11 +264,50 @@ export default async function TodayPage() {
           </Link>
         )}
 
-        {/* This week strip */}
+        {/* Check-in row (§3.11): one tap to the jot screen, and the injuries
+            read-back so it is always obvious what the planner believes. */}
+        <Link href="/checkin" className="card flex min-h-[52px] items-center gap-3 px-4 py-2.5">
+          <span className="min-w-0 flex-1">
+            <span className="overline block" style={{ color: "var(--ink-2)" }}>
+              Check-in
+            </span>
+            <span
+              className="block truncate text-[13px]"
+              style={{ color: runnerContext?.injuries ? "var(--warn)" : "var(--ink-3)" }}
+            >
+              {runnerContext?.injuries
+                ? `Working around: ${runnerContext.injuries}`
+                : hasThisWeeksFeedback
+                  ? "This week's note is in — edit any time"
+                  : "Injuries and how the week felt"}
+            </span>
+          </span>
+          <IconChevronRight size={16} strokeWidth={2.2} className="shrink-0" style={{ color: "var(--ink-3)" }} />
+        </Link>
+
+        {/* Week strip — from Sunday 17:00 this is next week (§3.3), so the
+            "plan ready" message frames the strip rather than duplicating it
+            in a banner (m-2). */}
         <section className="flex flex-col gap-2">
-          <h2 className="overline" style={{ color: "var(--ink-2)" }}>
-            This week
-          </h2>
+          <div className="flex items-baseline justify-between">
+            <h2 className="overline" style={{ color: "var(--ink-2)" }}>
+              {sundayEvening ? "Next week" : "This week"}
+            </h2>
+            {planReady && (
+              <Link
+                href="/plan"
+                className="text-[13px] font-semibold"
+                style={{ color: "var(--accent)" }}
+              >
+                Plan ready — review it
+              </Link>
+            )}
+            {sundayEvening && !planReady && (
+              <span className="text-[12px]" style={{ color: "var(--ink-3)" }}>
+                No plan yet — generating this evening
+              </span>
+            )}
+          </div>
           <div className="grid grid-cols-7 gap-1.5">
             {stripDates.map((date, i) => {
               const day = stripByDate.get(date);

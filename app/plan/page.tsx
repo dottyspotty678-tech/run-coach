@@ -18,6 +18,7 @@ import {
   getEventsForWeek,
   getPlanForWeek,
   getRecentActivities,
+  getRunnerContext,
   sessionDone,
   travelDatesFromEvents,
   type CalendarEventRow,
@@ -37,11 +38,12 @@ export default async function PlanPage() {
   const dates = weekDates(weekStart);
 
   const supabase = createServiceClient();
-  const [plan, activities, events, raceGoalRes] = await Promise.all([
+  const [plan, activities, events, raceGoalRes, runnerContext] = await Promise.all([
     getPlanForWeek(weekStart),
     getRecentActivities(28),
     getEventsForWeek(weekStart),
     supabase.from("race_goal").select("*").eq("id", true).maybeSingle(),
+    getRunnerContext(),
   ]);
 
   const raceGoal = raceGoalRes.data as {
@@ -119,6 +121,20 @@ export default async function PlanPage() {
               {plan.week_summary ||
                 "This plan predates the current format — regenerate to get a week summary and day-by-day sessions."}
             </p>
+            {/* Runner context read-back (§3.11): what the planner is working around. */}
+            {runnerContext?.injuries && (
+              <p className="text-[13px] leading-[18px]" style={{ color: "var(--warn)" }}>
+                Working around: {runnerContext.injuries}
+              </p>
+            )}
+            <Link
+              href="/checkin"
+              className="flex min-h-[36px] w-fit items-center gap-0.5 text-[13px] font-semibold"
+              style={{ color: "var(--accent)" }}
+            >
+              Check-in — injuries and how the week felt
+              <IconChevronRight size={14} strokeWidth={2.4} />
+            </Link>
           </section>
 
           {/* Day cards */}

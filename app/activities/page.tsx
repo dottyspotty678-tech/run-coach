@@ -24,6 +24,13 @@ function formatPace(a: ActivityRow): string | null {
   return `${mins}:${String(secs).padStart(2, "0")} /km`;
 }
 
+/** "WeightTraining" → "Weight training": Strava's camel-case type ids, in the
+ *  app's sentence-case voice (design-system copy rule, §4). */
+function humaniseType(type: string): string {
+  const spaced = type.replace(/([a-z])([A-Z])/g, "$1 $2");
+  return spaced.charAt(0).toUpperCase() + spaced.slice(1).toLowerCase();
+}
+
 function formatDuration(seconds: number): string {
   const mins = Math.round(seconds / 60);
   if (mins < 60) return `${mins} min`;
@@ -186,7 +193,7 @@ export default async function ActivityPage({
                   const date = londonDateOf(a.start_date);
                   const pace = formatPace(a);
                   const run = isRun(a.type);
-                  const name = a.name ?? (run ? "Run" : a.type);
+                  const name = a.name ?? (run ? "Run" : humaniseType(a.type));
                   return (
                     <li
                       key={a.external_id}
@@ -200,7 +207,7 @@ export default async function ActivityPage({
                         <span className="block truncate text-[15px] font-medium">{name}</span>
                         <span className="block text-[12px] tabular" style={{ color: "var(--ink-2)" }}>
                           {/* Non-runs are clearly labelled with their type and never show pace (U1). */}
-                          {!run && `${a.type} · `}
+                          {!run && `${humaniseType(a.type)} · `}
                           {a.distance_m > 0 && `${(a.distance_m / 1000).toFixed(1)} km · `}
                           {formatDuration(a.duration_s)}
                           {pace ? ` · ${pace}` : ""}
