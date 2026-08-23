@@ -2,6 +2,10 @@ import Link from "next/link";
 import { getCurrentWeeklyPlan } from "@/lib/weeklyPlan";
 import { RegenerateButton } from "./regenerate-button";
 
+// Reads the DB on every request — without this, Next prerenders the page at
+// build time and serves a stale snapshot of the plan.
+export const dynamic = "force-dynamic";
+
 type Meal = {
   date: string;
   recipe_name: string;

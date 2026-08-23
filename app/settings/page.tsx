@@ -3,6 +3,10 @@ import { getTrainingPhase } from "@/lib/trainingPhase";
 import Link from "next/link";
 import { saveSettings, saveRaceGoal } from "./actions";
 
+// Reads the DB on every request — without this, Next prerenders the page at
+// build time and serves stale form prefills.
+export const dynamic = "force-dynamic";
+
 export default async function SettingsPage() {
   const supabase = createServiceClient();
 
