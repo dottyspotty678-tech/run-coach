@@ -2,10 +2,13 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getTrainingPhase } from "@/lib/trainingPhase";
 
+// Target week for planning. On Sunday this is the UPCOMING Monday, not the
+// week that ends tonight — the Sunday-evening cron exists to plan the week
+// ahead, and calendar events synced from "now" mostly fall in that week too.
 function getWeekStart(now: Date): string {
   const d = new Date(now);
   const day = d.getDay(); // 0 = Sunday
-  const diffToMonday = day === 0 ? -6 : 1 - day;
+  const diffToMonday = day === 0 ? 1 : 1 - day;
   d.setDate(d.getDate() + diffToMonday);
   d.setHours(0, 0, 0, 0);
   return d.toISOString().slice(0, 10);
