@@ -1,8 +1,9 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getTrainingPhase } from "@/lib/trainingPhase";
-import { parseTrainingDays } from "@/lib/planTypes";
+import { parseTrainingDays, type TrainingDay } from "@/lib/planTypes";
 import {
+  addDays,
   boundaryWeekStart,
   formatDateShort,
   formatWeekday,
@@ -16,6 +17,7 @@ import {
 import {
   completedCategories,
   getEventsForWeek,
+  getPendingChanges,
   getPlanForWeek,
   getRecentActivities,
   getRunnerContext,
@@ -23,28 +25,42 @@ import {
   travelDatesFromEvents,
   type CalendarEventRow,
 } from "@/components/data";
-import { SESSION_META, SessionBadge } from "@/components/session";
 import { GeneratePlanButton } from "@/components/generate-plan";
-import { RevisePlan } from "./revise-plan";
-import { ScrollToHash } from "@/components/scroll-to-hash";
-import { IconChevronRight, IconTick } from "@/components/icons";
+import { IconChevronRight } from "@/components/icons";
+import { PlanTable, type PlanTableRow } from "./plan-table";
 
 // Reads the DB on every request — never serve a stale prerender.
 export const dynamic = "force-dynamic";
 
-export default async function PlanPage() {
+/** The sketch's Volume column: "15 km", "45 min", "Gym", "Rest". */
+function volumeFor(day: TrainingDay): string {
+  if (day.session_type === "rest") return "Rest";
+  if (day.session_type === "strength") return "Gym";
+  const km = `${day.title} ${day.detail}`.match(/(\d+(?:[.,]\d+)?)\s*km\b/i);
+  if (km) return `${km[1].replace(",", ".")} km`;
+  return day.duration_min > 0 ? `${day.duration_min} min` : "—";
+}
+
+export default async function PlanPage({
+  searchParams,
+}: {
+  searchParams: Promise<{ edit?: string }>;
+}) {
+  const { edit } = await searchParams;
   const now = new Date();
   const today = todayISO(now);
   const weekStart = boundaryWeekStart(now);
   const dates = weekDates(weekStart);
+  const tomorrow = addDays(today, 1);
 
   const supabase = createServiceClient();
-  const [plan, activities, events, raceGoalRes, runnerContext] = await Promise.all([
+  const [plan, activities, events, raceGoalRes, runnerContext, pending] = await Promise.all([
     getPlanForWeek(weekStart),
     getRecentActivities(28),
     getEventsForWeek(weekStart),
     supabase.from("race_goal").select("*").eq("id", true).maybeSingle(),
     getRunnerContext(),
+    getPendingChanges(weekStart),
   ]);
 
   const raceGoal = raceGoalRes.data as {
@@ -60,6 +76,33 @@ export default async function PlanPage() {
   const done = completedCategories(activities);
   const eventTravel = travelDatesFromEvents(events, dates);
 
+  // V2 table rows: today first, then forward, past days at the end (sketch:
+  // Today, Tomorrow, N+2…). On Sunday evening the shown week is next week, so
+  // every day is "upcoming" and natural Monday order holds.
+  const weekDays = (days ?? []).filter((d) => dates.includes(d.date));
+  const upcoming = weekDays.filter((d) => d.date >= today);
+  const past = weekDays.filter((d) => d.date < today);
+  const rows: PlanTableRow[] = [...upcoming, ...past].map((day) => ({
+    date: day.date,
+    dayLabel:
+      day.date === today
+        ? "Today"
+        : day.date === tomorrow
+          ? "Tomorrow"
+          : formatWeekday(day.date),
+    dateLabel: formatDateShort(day.date),
+    volume: volumeFor(day),
+    session_type: day.session_type,
+    title: day.title,
+    detail: day.detail,
+    why: day.why,
+    duration_min: day.duration_min,
+    is_travel_day: day.is_travel_day,
+    isToday: day.date === today,
+    isPast: day.date < today,
+    done: sessionDone(day.session_type, done.get(day.date)),
+  }));
+
   // Calendar context strip: per day, travel-flagged events and evening events
   // (starting 17:00 or later London time).
   const contextEvents = new Map<string, CalendarEventRow[]>();
@@ -74,8 +117,6 @@ export default async function PlanPage() {
 
   return (
     <main className="flex flex-col gap-4 px-4 pt-3">
-      <ScrollToHash />
-
       {/* Header */}
       <header className="flex items-start justify-between gap-3 pt-1">
         <div>
@@ -93,7 +134,8 @@ export default async function PlanPage() {
         <section className="card flex flex-col items-start gap-3 p-5">
           <h2 className="text-[20px] font-semibold">No plan yet for this week</h2>
           <p className="text-[14px]" style={{ color: "var(--ink-2)" }}>
-            Generate the week's training and meals from your calendar and recent running.
+            Generate the week's training and away-day meals from your calendar and recent
+            running.
           </p>
           <GeneratePlanButton hasPlan={false} />
         </section>
@@ -122,6 +164,14 @@ export default async function PlanPage() {
               {plan.week_summary ||
                 "This plan predates the current format — regenerate to get a week summary and day-by-day sessions."}
             </p>
+            {/* Audit read-back: the note behind the current stored plan (U7);
+                cleared automatically by the next fresh generation. */}
+            {plan.revision_note && (
+              <p className="text-[12px] leading-[17px]" style={{ color: "var(--ink-3)" }}>
+                Revised{plan.revised_at ? ` ${relativeTime(plan.revised_at, now)}` : ""} — you
+                asked: <span className="italic">&ldquo;{plan.revision_note}&rdquo;</span>
+              </p>
+            )}
             {/* Runner context read-back (§3.11): what the planner is working around. */}
             {runnerContext?.injuries && (
               <p className="text-[13px] leading-[18px]" style={{ color: "var(--warn)" }}>
@@ -138,74 +188,27 @@ export default async function PlanPage() {
             </Link>
           </section>
 
-          {/* Day cards */}
-          {days ? (
-            <section className="flex flex-col gap-2">
-              {days
-                .filter((d) => dates.includes(d.date))
-                .map((day) => {
-                  const isToday = day.date === today;
-                  const meta = SESSION_META[day.session_type];
-                  return (
-                    <article
-                      key={day.date}
-                      id={`d${day.date}`}
-                      data-today={isToday ? "" : undefined}
-                      className="card flex flex-col gap-1.5 p-4"
-                      style={isToday ? { borderColor: "var(--accent)" } : undefined}
-                    >
-                      <div className="flex items-center justify-between gap-2">
-                        <span className="text-[13px] font-semibold" style={{ color: isToday ? "var(--accent)" : "var(--ink-2)" }}>
-                          {formatWeekday(day.date)}{" "}
-                          <span style={{ color: "var(--ink-3)" }}>{formatDateShort(day.date)}</span>
-                          {isToday && " · Today"}
-                        </span>
-                        <span className="flex items-center gap-1.5">
-                          {sessionDone(day.session_type, done.get(day.date)) && (
-                            <IconTick size={15} strokeWidth={2.6} style={{ color: "var(--ok)" }} />
-                          )}
-                          {day.is_travel_day && (
-                            <span className="chip" style={{ color: "var(--s-long)", background: "var(--s-long-soft)" }}>
-                              Travel
-                            </span>
-                          )}
-                          <SessionBadge type={day.session_type} />
-                        </span>
-                      </div>
-                      <h2 className="text-[17px] font-semibold leading-6">{day.title}</h2>
-                      <p className="text-[14px] leading-[21px]">{day.detail}</p>
-                      <div className="flex items-baseline justify-between gap-2">
-                        <p
-                          className="border-l-2 pl-2.5 text-[12px] leading-[17px]"
-                          style={{ color: "var(--ink-2)", borderColor: meta.color }}
-                        >
-                          {day.why}
-                        </p>
-                        {day.duration_min > 0 && (
-                          <span className="shrink-0 text-[13px] font-semibold tabular" style={{ color: "var(--ink-2)" }}>
-                            {day.duration_min} min
-                          </span>
-                        )}
-                      </div>
-                    </article>
-                  );
-                })}
-            </section>
+          {/* V2 table + edit mode (replaces the day cards and the old
+              "Suggest changes" card — one editing concept). */}
+          {rows.length > 0 ? (
+            <PlanTable
+              rows={rows}
+              weekStart={weekStart}
+              pendingChanges={pending?.changes ?? []}
+              checkinNote={pending?.checkin_note ?? ""}
+              initialEdit={edit === "1"}
+            />
           ) : (
             <section className="card flex flex-col gap-2 p-4">
               <span className="overline" style={{ color: "var(--ink-2)" }}>
                 Training
               </span>
               <p className="whitespace-pre-wrap text-[14px] leading-[21px]">{plan.training_plan_text}</p>
+              <p className="text-[13px]" style={{ color: "var(--ink-2)" }}>
+                Regenerate to get the day-by-day table and editing.
+              </p>
             </section>
           )}
-
-          {/* Review-and-revise (round 2, U7): the finishing step of the
-              generate → review → revise → done flow. */}
-          <RevisePlan
-            revisionNote={plan.revision_note ?? null}
-            revisedAtRelative={relativeTime(plan.revised_at ?? null, now)}
-          />
         </>
       )}
 

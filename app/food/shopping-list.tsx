@@ -94,6 +94,16 @@ export function ShoppingList({
         )}
       </div>
 
+      {/* V2 sketch columns: Item | Volume */}
+      <div className="-mt-2 flex items-baseline justify-between px-1">
+        <span className="overline" style={{ color: "var(--ink-3)" }}>
+          Item
+        </span>
+        <span className="overline" style={{ color: "var(--ink-3)" }}>
+          Volume
+        </span>
+      </div>
+
       {groups.map(({ category, items: groupItems }) => {
         const sorted = loaded
           ? [...groupItems].sort(
@@ -127,23 +137,25 @@ export function ShoppingList({
                       >
                         {isTicked && <IconTick size={13} strokeWidth={3} />}
                       </span>
-                      <span className="min-w-0 flex-1">
-                        <span
-                          className="block text-[15px] font-medium"
-                          style={
-                            isTicked
-                              ? { color: "var(--ink-3)", textDecoration: "line-through" }
-                              : undefined
-                          }
-                        >
-                          {item.item}
-                        </span>
-                        {item.quantity_note && (
-                          <span className="block text-[12px]" style={{ color: "var(--ink-3)" }}>
-                            {item.quantity_note}
-                          </span>
-                        )}
+                      <span
+                        className="min-w-0 flex-1 text-[15px] font-medium"
+                        style={
+                          isTicked
+                            ? { color: "var(--ink-3)", textDecoration: "line-through" }
+                            : undefined
+                        }
+                      >
+                        {item.item}
                       </span>
+                      {/* Volume column (V2 sketch): quantity on the right */}
+                      {item.quantity_note && (
+                        <span
+                          className="shrink-0 text-[13px]"
+                          style={{ color: isTicked ? "var(--ink-3)" : "var(--ink-2)" }}
+                        >
+                          {item.quantity_note}
+                        </span>
+                      )}
                     </button>
                   </li>
                 );

@@ -99,66 +99,67 @@ Numbers in stats use `font-variant-numeric: tabular-nums`.
 
 | Component | File | Notes |
 |---|---|---|
-| Tab bar | `components/tab-bar.tsx` | Fixed bottom, 5 tabs, blur surface, active = accent; tapping active tab scrolls to top; hidden on `/pin`. |
+| Tab bar | `components/tab-bar.tsx` | V2: 4 tabs (Dashboard · Plan · Nutrition · Settings), blur surface, active = accent; tapping active tab scrolls to top; hidden on `/pin`. |
 | Card | utility classes (`.card`) | Surface, radius 16, hairline border. |
 | Session badge | `components/session.tsx` | Soft fill + strong text, overline type. Fixed colour per type. |
-| Meal-type badge | `components/session.tsx` | Home / Eating out / Quick, same shape as session badge. |
+| Meal-type badge | `components/session.tsx` | v1 legacy rendering only (Home / Eating out / Quick) — the v2 meal model has no meal types. |
 | Context chip | `.chip` utility | Header chips: "Travel day", "Race week", "6 weeks to …". |
-| Banner | `components/banner.tsx` | Variants: warn (stale/disconnected), error, info, offline. Slim, full-width, above content. |
+| Banner | `components/banner.tsx` | Variants: warn (stale/disconnected), error, info, offline; `quiet` prop (V2 Dashboard) drops the fill for tinted text + hairline so banners sit below the hero visually. |
 | Offline banner | `components/offline-banner.tsx` | Client; listens to online/offline events. |
-| Week strip | rendered in `app/page.tsx` | 7 tiles: weekday letter, session abbrev (session colour), travel dot, completed tick. Links to `/plan#d{date}`. |
-| Stat tile | `.stat` utility in Today/Activity | Big tabular number + footnote label. |
-| Day card (plan) | `app/plan/page.tsx` | Date, session badge, title, detail, duration, travel indicator, done tick. |
-| Meal card | `app/food/page.tsx` | Badge, name, prep chip, ingredients, `<details>` "Method" disclosure. |
-| Shopping list | `app/food/shopping-list.tsx` | Client; grouped by category; localStorage ticks keyed by week + generated_at; checked sink + strike; "Reset ticks". |
-| Segmented control | `app/food/food-tabs.tsx`, settings weight goal | 2-option pill. |
+| Dinner card (Dashboard) | rendered in `app/page.tsx` | V2: shown ONLY when today is an away day with a planned prep-ahead meal; links to Nutrition. Home days show no meal card. |
+| Volume lookback card | rendered in `app/page.tsx` | V2: 7-day running km (run-only, U1) + planned-sessions-done summary; opens `/activities` (the relocated Activity history). |
+| Quick actions grid | rendered in `app/page.tsx` | V2: 2x2 — Log a session (sheet), Add a goal race (`/settings#race`), Add a check-in (`/checkin`), Update training plan (`/plan?edit=1`). |
+| Plan table | `app/plan/plan-table.tsx` | V2: Date \| Volume \| Detail rows, today first then forward (past days dimmed at the end); tap to expand the full session card. Volume = "15 km" / "45 min" / "Gym" / "Rest". |
+| Plan edit mode | `app/plan/plan-table.tsx` | V2: per-row session-type quick-pick + free-text (`addPendingChange`), whole-week instruction, inline check-in note (`savePendingCheckin`), pending list with per-item Remove and Clear all, ONE "Apply changes — regenerate" → POST `{apply_pending: true}` (~30 s state, 429/500 surfaced). Replaces the round-2 Suggest-changes card. Deep-linked from the Dashboard via `?edit=1`. |
+| Away meal card | `app/food/page.tsx` | V2: `<details>` row — date + recipe + prep time, expanding to ingredients (item \| quantity) and method. |
+| Shopping list | `app/food/shopping-list.tsx` | Client; grouped by category with the sketch's Item \| Volume columns (`quantity_note` right-aligned); localStorage ticks keyed by week + generated_at; checked sink + strike; "Reset ticks". |
 | Generate/regenerate | `components/generate-plan.tsx` | Confirm sheet when replacing; in-flight spinner label "Planning your week… (about 30 seconds)"; error + retry. |
-| Sync button(s) | `app/settings/connections.tsx`, tab sync buttons | Combined sync = both providers, independent per-provider results. |
+| Sync button(s) | `app/settings/connections.tsx`, secondary-screen sync buttons | Combined sync = both providers, independent per-provider results. |
 | Tag input | `app/settings/food-form.tsx` | Type + add, tap to remove; writes hidden comma-joined field (keeps server-action field names). |
 | Stepper | `app/settings/food-form.tsx` | Household size 1–6. |
 | PIN keypad | `app/pin/pin-pad.tsx` | 4 dots, 0–9 + delete, auto-submit on 4th digit, shake on 401, countdown lockout on 429. |
 | Check-in forms | `app/checkin/checkin-forms.tsx` | Two textareas, one Save each: weekly note (keyed to the week containing today) and persistent injuries with "Clear — all healed". Fix round 1, U4. |
-| Check-in row (Today) | rendered in `app/page.tsx` | Persistent one-tap entry under the meal card; doubles as the injuries read-back ("Working around: …"). |
 | Injury history list | `app/checkin/injury-history.tsx` | Round 2, U5. Visually secondary list under current injuries: description + period rows, inline add/edit forms, in-place delete confirm. |
-| Log-session sheet | `app/activities/log-session.tsx` | Round 2, U6. Bottom sheet (same pattern as the regenerate confirm): date, session-type quick-pick chips + free-text "Other", duration, distance (run-ish types only), note. Entry points: Activity header (and empty state), Today hero when today's session is unticked (pre-selects the type). `ManualActivityActions` adds Edit/Delete to manually logged rows only; manual rows carry a "Logged manually" label and never show pace. |
-| Revise card | `app/plan/revise-plan.tsx` | Round 2, U7. "Happy with the week?" card after the day cards — the finishing step of generate → review → revise → done. Collapsed by default; expands to a note + "Revise plan" (POST `{revision_note}`, ~30 s in-flight state, 429/500 surfaced with retry). Shows "Revised {relative} — you asked: …" until the next generation clears it. |
+| Log-session sheet | `app/activities/log-session.tsx` | Round 2, U6. Bottom sheet: date, session-type quick-pick chips + free-text "Other", duration, distance (run-ish types only), note. Entry points: Dashboard quick action ("tile" appearance), Activity header (and empty state), Dashboard hero when today's session is unticked (pre-selects the type). `ManualActivityActions` adds Edit/Delete to manually logged rows only; manual rows carry a "Logged manually" label and never show pace. |
 | Skeletons | `loading.tsx` per route + `.skeleton` utility | Reserve final layout space; visible < 500 ms. |
-| Empty states | per screen | Icon-free, one sentence + one action, per REQUIREMENTS §3. |
+| Empty states | per screen | Icon-free, one sentence + one action, per REQUIREMENTS §3 / REDESIGN-V2. |
 
-## 6. Navigation map
+Retired in V2: the 7-day week strip and 3-tile snapshot row (Dashboard now carries the
+volume card + quick actions), the Today check-in row (quick action instead), the Food
+Meals ⇄ Shopping segmented control (one scrolling Nutrition screen), and the round-2
+Suggest-changes card (merged into Plan edit mode).
+
+## 6. Navigation map (V2 — docs/REDESIGN-V2.md)
 
 Bottom tab bar (always visible except on `/pin`):
 
-1. **Today** — `/` (PWA start URL)
-2. **Plan** — `/plan`
-3. **Food** — `/food` (Meals ⇄ Shopping list segmented control)
-4. **Activity** — `/activities`
-5. **Settings** — `/settings`
+1. **Dashboard** — `/` (PWA start URL)
+2. **Plan** — `/plan` (table + edit mode; `?edit=1` opens edit mode directly)
+3. **Nutrition** — `/food` (away-day recipes, then the shopping list)
+4. **Settings** — `/settings`
 
 Secondary screens (back affordance in header, no tab highlight):
 
+- **Activity history** — `/activities` (relocated from the v1 tab; list, 8-week chart and
+  Log a session all kept), reached from the Dashboard volume card.
 - **Calendar list** — `/calendar`, reached from Plan → calendar strip → "Full calendar" and
   Settings → Connections.
+- **Check-in** — `/checkin`, reached from the Dashboard quick action, the Plan week-summary
+  link, the Settings row, and the Sunday nudge banner.
 - **PIN screen** — `/pin`, rendered by middleware for unauthenticated requests; verifies via
   `POST /api/pin/verify` with `{ pin: string }` → 200 (cookie set, redirect `/`), 401 (wrong),
   429 + `{ retryAfterSeconds: number }` (lockout).
-- **Check-in** — `/checkin` (fix round 1, U4), reached from the persistent Today row, the Plan
-  week-summary link, the Settings row, and the Sunday nudge banner on Today.
 
-Cross-links: Today session card → none (it *is* the answer); Today meal card → `/food#d{date}`;
-week-strip tile → `/plan#d{date}`; Sunday-evening "Plan ready — review it" strip link →
-`/plan` (see the Sunday note below); Today check-in row and Sunday check-in nudge →
-`/checkin`; disconnected banner → `/settings#connections`; Activity empty state →
-`/settings#connections`.
+Cross-links: Dashboard hero → none (it *is* the answer); Dashboard dinner card →
+`/food#d{date}` (away days only); volume card → `/activities`; quick actions → log-session
+sheet, `/settings#race`, `/checkin`, `/plan?edit=1`; sync banners → `/settings#connections`;
+Activity empty state → `/settings#connections`.
 
-**Sunday-evening state (reworked in fix round 1, m-2).** From Sunday 17:00 the whole app
-already shows the upcoming week (§3.3 boundary), so a separate "Next week's plan is ready"
-banner double-messaged the very week the strip was displaying. Single-voiced treatment now:
-the week-strip heading flips from "This week" to "Next week", with an inline accent link
-"Plan ready — review it" (→ `/plan`) when the plan exists, or a quiet "No plan yet —
-generating this evening" note when the cron has not landed. The hero card still shows
-*today's* (Sunday's) session from the ending week — the answer to "what should I do tonight?"
-never changes meaning.
+**Sunday-evening state (V2).** From Sunday 17:00 the app shows the upcoming week (§3.3
+boundary). With the v1 week strip retired, a single quiet banner is the one voice: "Next
+week's plan is ready — review it" (→ `/plan`) once the plan exists, or "Next week's plan
+generates this evening" before the cron lands. The hero still shows *today's* (Sunday's)
+session from the ending week.
 
 ## 7. Interfaces the backend must honour (UI already reads these)
 

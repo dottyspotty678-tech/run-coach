@@ -1,7 +1,9 @@
 import {
+  parseAwayMeals,
   parseLegacyMeals,
   parseMeals,
   parseShoppingList,
+  type AwayMealEntry,
   type LegacyMealEntry,
   type MealEntry,
 } from "@/lib/planTypes";
@@ -10,156 +12,207 @@ import {
   formatDateShort,
   formatWeekday,
   todayISO,
-  weekDates,
 } from "@/components/dates";
 import { getPlanForWeek } from "@/components/data";
 import { MealBadge } from "@/components/session";
 import { GeneratePlanButton } from "@/components/generate-plan";
 import { ScrollToHash } from "@/components/scroll-to-hash";
-import { FoodTabs } from "./food-tabs";
 import { ShoppingList } from "./shopping-list";
 
 // Reads the DB on every request — never serve a stale prerender.
 export const dynamic = "force-dynamic";
 
-export default async function FoodPage() {
+// V2 Nutrition (docs/REDESIGN-V2.md §Screen 3): meal-prep model. Recipes exist
+// ONLY for away days (prepped/cooked at home before travelling); home days
+// have no meal planning. Layout: "Next away days" list (tap for the full
+// recipe), then the shopping list with the sketch's Item | Volume columns.
+
+function AwayMealCard({ meal, isToday }: { meal: AwayMealEntry; isToday: boolean }) {
+  return (
+    <details
+      id={`d${meal.date}`}
+      data-today={isToday ? "" : undefined}
+      className="card group"
+      style={isToday ? { borderColor: "var(--accent)" } : undefined}
+    >
+      <summary className="flex min-h-[56px] cursor-pointer list-none items-center gap-3 px-4 py-3 [&::-webkit-details-marker]:hidden">
+        <span className="w-16 shrink-0">
+          <span
+            className="block text-[13px] font-semibold leading-4"
+            style={{ color: isToday ? "var(--accent)" : "var(--ink-2)" }}
+          >
+            {isToday ? "Today" : formatWeekday(meal.date)}
+          </span>
+          <span className="block text-[11px]" style={{ color: "var(--ink-3)" }}>
+            {formatDateShort(meal.date)}
+          </span>
+        </span>
+        <span className="min-w-0 flex-1 text-[15px] font-semibold leading-5">
+          {meal.recipe_name}
+        </span>
+        {meal.prep_time_min > 0 && (
+          <span className="shrink-0 text-[12px] font-semibold tabular" style={{ color: "var(--ink-2)" }}>
+            {meal.prep_time_min} min
+          </span>
+        )}
+        <span
+          className="shrink-0 text-[12px] font-semibold"
+          style={{ color: "var(--accent)" }}
+        >
+          <span className="group-open:hidden">Recipe</span>
+          <span className="hidden group-open:inline">Close</span>
+        </span>
+      </summary>
+      <div className="flex flex-col gap-3 border-t px-4 py-3" style={{ borderColor: "var(--line)" }}>
+        {meal.ingredients.length > 0 && (
+          <div className="flex flex-col gap-1">
+            <h3 className="overline" style={{ color: "var(--ink-2)" }}>
+              Ingredients
+            </h3>
+            <ul className="flex flex-col gap-0.5">
+              {meal.ingredients.map((ing) => (
+                <li key={ing.item} className="flex items-baseline justify-between gap-3 text-[14px]">
+                  <span className="min-w-0 flex-1">{ing.item}</span>
+                  <span className="shrink-0 text-[13px]" style={{ color: "var(--ink-2)" }}>
+                    {ing.quantity}
+                  </span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+        <div className="flex flex-col gap-1">
+          <h3 className="overline" style={{ color: "var(--ink-2)" }}>
+            Method
+          </h3>
+          <p className="whitespace-pre-wrap text-[14px] leading-[21px]">{meal.method}</p>
+        </div>
+      </div>
+    </details>
+  );
+}
+
+/** Legacy v1 meal card — old stored rows keep rendering until regenerated. */
+function LegacyMealCard({ meal }: { meal: MealEntry | LegacyMealEntry }) {
+  const structured = "meal_type" in meal ? (meal as MealEntry) : null;
+  return (
+    <article className="card flex flex-col gap-1.5 p-4">
+      <div className="flex items-center justify-between gap-2">
+        <span className="text-[13px] font-semibold" style={{ color: "var(--ink-2)" }}>
+          {formatWeekday(meal.date)}{" "}
+          <span style={{ color: "var(--ink-3)" }}>{formatDateShort(meal.date)}</span>
+        </span>
+        {structured && <MealBadge type={structured.meal_type} />}
+      </div>
+      <h2 className="text-[15px] font-semibold leading-5">{meal.recipe_name}</h2>
+      {meal.ingredients.length > 0 && (
+        <p className="text-[13px] leading-[19px]" style={{ color: "var(--ink-2)" }}>
+          {meal.ingredients.join(" · ")}
+        </p>
+      )}
+      <p className="text-[13px] leading-[19px]" style={{ color: "var(--ink-2)" }}>
+        {meal.short_instructions}
+      </p>
+    </article>
+  );
+}
+
+export default async function NutritionPage() {
   const now = new Date();
   const today = todayISO(now);
   const weekStart = boundaryWeekStart(now);
-  const dates = weekDates(weekStart);
 
   const plan = await getPlanForWeek(weekStart);
-  const meals = parseMeals(plan);
-  const legacyMeals = meals ? null : parseLegacyMeals(plan);
+  const awayMeals = parseAwayMeals(plan);
+  const legacyMeals =
+    awayMeals === null && plan
+      ? (parseMeals(plan) ?? parseLegacyMeals(plan))
+      : null;
   const shoppingList = parseShoppingList(plan);
-  const allTravel = meals !== null && meals.every((m) => m.meal_type === "travel");
 
-  const mealByDate = new Map<string, MealEntry | LegacyMealEntry>();
-  for (const m of meals ?? legacyMeals ?? []) mealByDate.set(m.date, m);
-
-  const mealsPanel = !plan ? (
-    <section className="card flex flex-col items-start gap-3 p-5">
-      <h2 className="text-[20px] font-semibold">No plan yet for this week</h2>
-      <p className="text-[14px]" style={{ color: "var(--ink-2)" }}>
-        Meals arrive with the weekly plan — generate it to see the week's cooking.
-      </p>
-      <GeneratePlanButton hasPlan={false} />
-    </section>
-  ) : (
-    <section className="flex flex-col gap-2">
-      {legacyMeals && (
-        <p
-          className="rounded-xl px-3 py-2 text-[13px] font-medium"
-          style={{ color: "var(--warn)", background: "var(--warn-soft)" }}
-        >
-          This plan predates meal types and prep times — regenerate from the Plan tab for the full format.
-        </p>
-      )}
-      {dates.map((date) => {
-        const meal = mealByDate.get(date);
-        const isToday = date === today;
-        const structured = meal && "meal_type" in meal ? (meal as MealEntry) : null;
-        return (
-          <article
-            key={date}
-            id={`d${date}`}
-            data-today={isToday ? "" : undefined}
-            className="card flex flex-col gap-1.5 p-4"
-            style={isToday ? { borderColor: "var(--accent)" } : undefined}
-          >
-            <div className="flex items-center justify-between gap-2">
-              <span
-                className="text-[13px] font-semibold"
-                style={{ color: isToday ? "var(--accent)" : "var(--ink-2)" }}
-              >
-                {formatWeekday(date)}{" "}
-                <span style={{ color: "var(--ink-3)" }}>{formatDateShort(date)}</span>
-                {isToday && " · Today"}
-              </span>
-              <span className="flex items-center gap-2">
-                {structured && structured.meal_type !== "travel" && (
-                  <span className="text-[13px] font-semibold tabular" style={{ color: "var(--ink-2)" }}>
-                    {structured.prep_time_min} min
-                  </span>
-                )}
-                {structured && <MealBadge type={structured.meal_type} />}
-              </span>
-            </div>
-            {!meal ? (
-              <p className="text-[14px]" style={{ color: "var(--ink-3)" }}>
-                No meal planned for this day.
-              </p>
-            ) : (
-              <>
-                <h2 className="text-[17px] font-semibold leading-6">{meal.recipe_name}</h2>
-                {structured?.meal_type === "travel" ? (
-                  <p className="text-[14px] leading-[21px]">{meal.short_instructions}</p>
-                ) : (
-                  <>
-                    {meal.ingredients.length > 0 && (
-                      <p className="text-[13px] leading-[19px]" style={{ color: "var(--ink-2)" }}>
-                        {meal.ingredients.join(" · ")}
-                      </p>
-                    )}
-                    <details className="group">
-                      <summary
-                        className="flex min-h-[32px] cursor-pointer list-none items-center text-[13px] font-semibold [&::-webkit-details-marker]:hidden"
-                        style={{ color: "var(--accent)" }}
-                      >
-                        <span className="group-open:hidden">Method</span>
-                        <span className="hidden group-open:inline">Hide method</span>
-                      </summary>
-                      <p className="pt-1 text-[14px] leading-[21px] whitespace-pre-wrap">
-                        {meal.short_instructions}
-                      </p>
-                    </details>
-                  </>
-                )}
-              </>
-            )}
-          </article>
-        );
-      })}
-    </section>
-  );
-
-  const shoppingPanel = !plan ? (
-    <section className="card p-5">
-      <p className="text-[14px]" style={{ color: "var(--ink-2)" }}>
-        The shopping list arrives with the weekly plan.
-      </p>
-    </section>
-  ) : shoppingList === null ? (
-    allTravel ? (
-      <section className="card p-5">
-        <p className="text-[15px] font-medium">No shopping needed this week — you're away.</p>
-      </section>
-    ) : (
-      <section className="card p-5">
-        <p className="text-[14px]" style={{ color: "var(--ink-2)" }}>
-          This plan predates shopping lists — regenerate from the Plan tab to get one.
-        </p>
-      </section>
-    )
-  ) : shoppingList.length === 0 ? (
-    <section className="card p-5">
-      <p className="text-[15px] font-medium">No shopping needed this week — you're away.</p>
-    </section>
-  ) : (
-    <ShoppingList
-      items={shoppingList}
-      weekStart={weekStart}
-      generatedAt={plan.generated_at}
-    />
-  );
+  // Upcoming away days first; already-passed prep days sink to the end.
+  const orderedAway = awayMeals
+    ? [
+        ...awayMeals.filter((m) => m.date >= today).sort((a, b) => a.date.localeCompare(b.date)),
+        ...awayMeals.filter((m) => m.date < today).sort((a, b) => a.date.localeCompare(b.date)),
+      ]
+    : [];
 
   return (
     <main className="flex flex-col gap-4 px-4 pt-3">
       <ScrollToHash />
       <header className="pt-1">
-        <h1 className="text-[22px] font-semibold leading-7">Food</h1>
+        <h1 className="text-[22px] font-semibold leading-7">Nutrition</h1>
       </header>
-      <FoodTabs meals={mealsPanel} shopping={shoppingPanel} />
+
+      {!plan ? (
+        <section className="card flex flex-col items-start gap-3 p-5">
+          <h2 className="text-[20px] font-semibold">No plan yet for this week</h2>
+          <p className="text-[14px]" style={{ color: "var(--ink-2)" }}>
+            Away-day recipes and the shopping list arrive with the weekly plan.
+          </p>
+          <GeneratePlanButton hasPlan={false} />
+        </section>
+      ) : awayMeals === null ? (
+        /* Legacy plan row — v1 meal format until the next generation. */
+        <section className="flex flex-col gap-2">
+          <p
+            className="rounded-xl px-3 py-2 text-[13px] font-medium"
+            style={{ color: "var(--warn)", background: "var(--warn-soft)" }}
+          >
+            This plan predates the away-day meal-prep format — regenerate from the Plan tab to
+            get prep-ahead recipes for away days.
+          </p>
+          {(legacyMeals ?? []).map((meal) => (
+            <LegacyMealCard key={meal.date} meal={meal} />
+          ))}
+          {shoppingList && shoppingList.length > 0 && plan && (
+            <div className="mt-2 flex flex-col gap-2">
+              <h2 className="overline" style={{ color: "var(--ink-2)" }}>
+                Shopping list
+              </h2>
+              <ShoppingList items={shoppingList} weekStart={weekStart} generatedAt={plan.generated_at} />
+            </div>
+          )}
+        </section>
+      ) : orderedAway.length === 0 ? (
+        <section className="card p-5">
+          <p className="text-[15px] font-medium">No away days coming up — nothing to prep.</p>
+          <p className="mt-1 text-[13px]" style={{ color: "var(--ink-2)" }}>
+            When the calendar shows a hotel stay or a trip outside Manchester or London, the
+            week's plan adds prep-ahead recipes and a shopping list here.
+          </p>
+        </section>
+      ) : (
+        <>
+          {/* Next away days */}
+          <section className="flex flex-col gap-2">
+            <h2 className="overline" style={{ color: "var(--ink-2)" }}>
+              Next away days
+            </h2>
+            <p className="-mt-1 text-[12px]" style={{ color: "var(--ink-3)" }}>
+              Prep these at home before you travel.
+            </p>
+            {orderedAway.map((meal) => (
+              <AwayMealCard key={meal.date} meal={meal} isToday={meal.date === today} />
+            ))}
+          </section>
+
+          {/* Shopping list — Item | Volume */}
+          <section className="flex flex-col gap-2">
+            <h2 className="overline" style={{ color: "var(--ink-2)" }}>
+              Shopping list
+            </h2>
+            {shoppingList === null || shoppingList.length === 0 ? (
+              <p className="card p-4 text-[14px]" style={{ color: "var(--ink-2)" }}>
+                Nothing on the list for this week's away meals.
+              </p>
+            ) : (
+              <ShoppingList items={shoppingList} weekStart={weekStart} generatedAt={plan.generated_at} />
+            )}
+          </section>
+        </>
+      )}
     </main>
   );
 }

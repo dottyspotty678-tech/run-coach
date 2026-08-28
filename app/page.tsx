@@ -5,6 +5,7 @@ import { isStravaConnected } from "@/lib/strava";
 import { isMicrosoftConnected } from "@/lib/microsoft";
 import { parseTrainingDays, parseAwayMeals } from "@/lib/planTypes";
 import {
+  addDays,
   boundaryWeekStart,
   formatDayShort,
   isSundayEvening,
@@ -69,6 +70,7 @@ export default async function DashboardPage() {
     events,
     raceGoalRes,
     recentFeedback,
+    prevWeekEvents,
   ] = await Promise.all([
     getPlanForWeek(heroWeekStart),
     boundaryWeek === heroWeekStart ? Promise.resolve(null) : getPlanForWeek(boundaryWeek),
@@ -79,6 +81,10 @@ export default async function DashboardPage() {
     getEventsForWeek(heroWeekStart),
     supabase.from("race_goal").select("*").eq("id", true).maybeSingle(),
     getRecentFeedback(1),
+    // Away spans can be opened by a hotel check-in event in the PREVIOUS week
+    // (the span runs to the day before check-out), so include last week's
+    // events when deriving today's away status.
+    getEventsForWeek(addDays(heroWeekStart, -7)),
   ]);
 
   const raceGoal = (raceGoalRes.data as RaceGoalRow | null) ?? null;
@@ -89,7 +95,11 @@ export default async function DashboardPage() {
 
   // --- Dinner card (V2): ONLY when today is an AWAY day with a planned meal.
   // Home days have no meal planning; legacy v1 rows render on Nutrition only.
-  const awayToday = awayDatesForRange(events, [today]).has(today);
+  const awayEvents = [
+    ...prevWeekEvents,
+    ...events.filter((e) => !prevWeekEvents.some((p) => p.external_id === e.external_id)),
+  ];
+  const awayToday = awayDatesForRange(awayEvents, [today]).has(today);
   const awayMeals = parseAwayMeals(heroPlan);
   const dinner = awayToday
     ? (awayMeals?.find((m) => m.date === today) ?? null)
