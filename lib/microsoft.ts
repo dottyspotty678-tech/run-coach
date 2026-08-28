@@ -178,12 +178,20 @@ async function doSyncCalendarEvents(): Promise<{ synced: number }> {
     end_time: new Date(e.end.dateTime + (e.end.dateTime.endsWith("Z") ? "" : "Z")).toISOString(),
     is_all_day: e.isAllDay,
     is_travel: isTravelEvent(e),
+    // V2: the location display name feeds the away/home status engine.
+    location: e.location?.displayName?.trim() || null,
     synced_at: new Date().toISOString(),
   }));
 
   if (rows.length > 0) {
     const { error } = await supabase.from("calendar_events").upsert(rows);
-    if (error) throw new Error(`Failed to store calendar events: ${error.message}`);
+    if (error) {
+      // V2 migration not run yet? Never fail the sync over the location
+      // column — retry without it.
+      const withoutLocation = rows.map(({ location: _location, ...rest }) => rest);
+      const { error: retryError } = await supabase.from("calendar_events").upsert(withoutLocation);
+      if (retryError) throw new Error(`Failed to store calendar events: ${retryError.message}`);
+    }
   }
 
   // Prune cancelled meetings (REQUIREMENTS §3.8): any stored event that

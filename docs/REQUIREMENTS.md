@@ -5,6 +5,13 @@ implement exactly what this document says. Where this document is silent, prefer
 behaviour consistent with the product vision. Anything in section 7 (Roadmap) is explicitly
 NOT in v1.
 
+> **v2 (28 Aug 2026): docs/REDESIGN-V2.md overrides this document wherever they conflict.**
+> Superseded by v2: the 5-tab navigation (§3.0 — now 4 tabs, Activity relocates), the Today
+> screen (§3.2 — now Dashboard), the v1 meal model (§3.4 — meals now exist only for AWAY
+> days as prep-ahead recipes), the shopping-list source (§3.5 — now exactly the away meals'
+> ingredients), and the Activity tab (§3.6 — now a secondary screen). The v2 backend rules
+> are summarised in §3.14 below. Everything else here still applies.
+
 Deployed app: https://run-coach-fawn.vercel.app
 Stack (unchanged): Next.js App Router + TypeScript + Tailwind v4 on Vercel; Supabase Postgres;
 Strava OAuth; Microsoft Graph OAuth; Anthropic Claude API; Vercel Cron. Single user. Installed
@@ -43,7 +50,7 @@ the Sunday ritual or the evening glance better, it does not belong in v1.
 
 ## 3. v1 feature specification
 
-### 3.0 Navigation structure (Must)
+### 3.0 Navigation structure (Must) — superseded in v2 (4 tabs; see REDESIGN-V2.md)
 
 Bottom tab bar, always visible, five tabs in this order:
 
@@ -98,7 +105,7 @@ Behaviour:
   API route returns the PIN screen or 401 respectively — including `/api/plan/generate`,
   sync endpoints, and any data-returning route.
 
-### 3.2 Today screen (Must — the killer screen)
+### 3.2 Today screen (Must — the killer screen) — superseded in v2 (Dashboard; see REDESIGN-V2.md)
 
 Why: the 20-second evening glance. It must answer "what should I do tonight?" with zero taps.
 
@@ -215,7 +222,7 @@ Plan screen layout:
 States: no plan → same empty state and generate button as Today. Generation failed → keep
 showing the previous plan (if any) with an error banner and "Try again" (3.7).
 
-### 3.4 Weekly plan — meals (Must)
+### 3.4 Weekly plan — meals (Must) — superseded in v2 (away-day meal prep; see REDESIGN-V2.md and §3.14)
 
 Why: decision fatigue is the enemy. One evening meal per day, planned around travel and
 training, reusing ingredients. Qualitative only — **no calories, no macros, no gram-level
@@ -249,7 +256,7 @@ recipe name, prep time, ingredients as a compact list, instructions (collapsed b
 control or clearly separated section at the top switches between **Meals** and **Shopping
 list** (3.5).
 
-### 3.5 Shopping list (Should)
+### 3.5 Shopping list (Should) — superseded in v2 (away meals' ingredients only; see REDESIGN-V2.md and §3.14)
 
 Why: the Sunday shop. The ingredient-reuse promise is only real if the week collapses into
 one short list. Judged valuable: include it.
@@ -269,7 +276,7 @@ one short list. Judged valuable: include it.
 - Empty state (all seven days travel): "No shopping needed this week — you're away."
 - Regenerating the plan replaces the list and clears the checks.
 
-### 3.6 Activities and calendar views (Should)
+### 3.6 Activities and calendar views (Should) — Activity tab superseded in v2 (secondary screen; content unchanged)
 
 **Activity tab** (Should): the training log, for post-run checks and Sunday reflection.
 
@@ -434,6 +441,31 @@ says what to change, and gets a revision — then treats the plan as final.
   untouched.
 - Backend contract: DESIGN.md §8c. Voice-agent note: this is the third capture surface a
   future voice flow would feed.
+
+### 3.14 v2 rules (Must — added in v2; full contract in docs/REDESIGN-V2.md)
+
+- **Away/home status engine**: per-day status derived from calendar events. Away when (1) a
+  hotel check-in/booking-pattern event opens a span until the day before the matching
+  check-out (or the day before the event's own end), or (2) an event carries a location that
+  is not Manchester or London (both home bases); otherwise home. No-location, no-hotel events
+  change nothing; a same-day trip yields no away days. Governs MEALS; `is_travel` continues
+  to govern TRAINING sessions. One shared helper (`awayDatesForRange`) feeds the UI and
+  generation.
+- **Meal-prep model (inverts §3.4/§3.5)**: real recipes are generated ONLY for away days in
+  the plan week — the runner cooks ahead at home and travels with the food; home days get no
+  meals. Recipes must be batch-friendly and transportable, with a qualitative quantity per
+  ingredient. The shopping list is exactly the away recipes' ingredients (consolidated, with
+  a quantity per item); still no calories anywhere. The eating-out guidance model is retired.
+  Old stored plans keep rendering through the legacy parsers.
+- **Batch plan editing**: per-day change requests (structured session-type change and/or
+  free-text instruction) plus an optional inline check-in note accumulate as persisted
+  pending changes. Nothing regenerates until one "Apply changes" action fires a single
+  revision call (U7 keep-stable semantics) containing the whole batch; the inline check-in
+  is saved through the weekly_feedback path; the queue clears on success only. Rate limits
+  (§3.7) and generate-then-swap apply unchanged.
+- **f-1**: any total stated in `week_summary` must equal what the seven `training_days`
+  actually sum to (recount before writing).
+- Backend contracts for all of the above: DESIGN.md §8d.
 
 ## 4. Content and tone
 

@@ -45,7 +45,69 @@ export type TrainingDay = {
 };
 
 // ---------------------------------------------------------------------------
-// Meals (§3.4) — weekly_plans.meal_plan_json: MealEntry[7], Monday-first
+// Meals — v2 (REDESIGN-V2.md §Screen 3): meal-prep model. Meals exist ONLY
+// for AWAY days (home days get none) and are real prep-ahead recipes cooked
+// at home before travelling. weekly_plans.meal_plan_json for v2 plans is
+// AwayMealEntry[] (one per away date; empty array when the week has no away
+// days). The v1 MealEntry / LegacyMealEntry shapes below remain so old
+// stored rows keep rendering through the existing fallbacks.
+// ---------------------------------------------------------------------------
+
+export type RecipeIngredient = {
+  item: string;
+  /** Qualitative quantity ("2 fillets", "1 bag"; natural weights fine). */
+  quantity: string;
+};
+
+export type AwayMealEntry = {
+  /** YYYY-MM-DD — an away date within the plan week. */
+  date: string;
+  recipe_name: string;
+  /** Integer minutes to prep/cook ahead at home. */
+  prep_time_min: number;
+  ingredients: RecipeIngredient[];
+  /** Full method, at most 4 short steps. */
+  method: string;
+};
+
+export function isRecipeIngredient(v: unknown): v is RecipeIngredient {
+  return (
+    typeof v === "object" &&
+    v !== null &&
+    !Array.isArray(v) &&
+    typeof (v as Record<string, unknown>).item === "string" &&
+    typeof (v as Record<string, unknown>).quantity === "string"
+  );
+}
+
+export function isAwayMealEntry(v: unknown): v is AwayMealEntry {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
+  const r = v as Record<string, unknown>;
+  return (
+    typeof r.date === "string" &&
+    typeof r.recipe_name === "string" &&
+    typeof r.method === "string" &&
+    typeof r.prep_time_min === "number" &&
+    Array.isArray(r.ingredients) &&
+    r.ingredients.every(isRecipeIngredient)
+  );
+}
+
+/**
+ * v2 away-day meals, or null when the stored plan is not v2 format (v1 and
+ * legacy rows fall back to parseMeals / parseLegacyMeals). An empty array is
+ * a valid v2 result: a week with no away days.
+ */
+export function parseAwayMeals(plan: WeeklyPlanRow | null | undefined): AwayMealEntry[] | null {
+  const raw = plan?.meal_plan_json;
+  if (!Array.isArray(raw)) return null;
+  if (raw.length === 0) return [];
+  const meals = raw.filter(isAwayMealEntry);
+  return meals.length === raw.length ? meals : null;
+}
+
+// ---------------------------------------------------------------------------
+// Meals — v1 (superseded by the v2 model above; kept for old stored rows)
 // ---------------------------------------------------------------------------
 
 export type MealType = "home" | "travel" | "assemble";

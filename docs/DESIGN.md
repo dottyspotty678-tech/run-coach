@@ -308,6 +308,61 @@ Reading the audit trail (`WeeklyPlanRow` in `lib/planTypes.ts`, populated by
   updates too). Both are null on a fresh generation and on pre-migration
   rows; render nothing when null.
 
+## 8d. V2 backend interfaces — away/home engine, meal-prep model, batch editing
+
+Contract for the v2 screens (docs/REDESIGN-V2.md). Same style as §7–§8c.
+
+### Away/home status engine (governs MEALS; `is_travel` still governs TRAINING)
+
+- `awayDatesForRange(events, dates)` in `components/data.ts` — pure function:
+  pass `CalendarEventRow[]` (from `getEventsForWeek` or an equivalent query)
+  and an ascending list of YYYY-MM-DD dates; returns the `Set<string>` of AWAY
+  dates. Rules: hotel check-in/booking titles open a span until the day before
+  the matching check-out (single-day check-ins still count one night);
+  events whose `location` is not a home base (Manchester/London) mark
+  [start … day before end] — so a same-day trip yields no away days; virtual
+  locations (Teams/Zoom/…) count as no location; home is the default.
+- `CalendarEventRow` gained `location?: string | null` (populated by the
+  calendar sync after the V2 migration; null before).
+- Dashboard "today's dinner card": show only when `awayDatesForRange(...)` for
+  today contains today AND the plan has a meal for today (below).
+
+### V2 meal model (`lib/planTypes.ts`)
+
+- New plans store `meal_plan_json` as `AwayMealEntry[]`:
+  `{ date, recipe_name, prep_time_min, ingredients: { item, quantity }[], method }`
+  — one entry per away day in the plan week; `[]` when the week has none.
+- Parse with `parseAwayMeals(plan)` → `AwayMealEntry[] | null`. Null means the
+  row is v1/legacy format — fall back to the existing `parseMeals` /
+  `parseLegacyMeals` renderers (do not break old rows). `[]` means a valid v2
+  week with no away days → "No away days coming up — nothing to prep".
+- Shopping list: unchanged shape `{ item, quantity_note, category }` — render
+  `quantity_note` as the sketch's "Volume" column. Generation guarantees the
+  list is exactly the away recipes' ingredients (server-side scrub).
+
+### Pending changes + batch apply (Plan screen edit mode)
+
+- Read: `getPendingChanges(weekStart)` in `components/data.ts` →
+  `{ week_start_date, changes: PendingChange[], checkin_note, updated_at } | null`
+  where `PendingChange = { id, date | null, requested_type | null, instruction | null }`.
+  Null pre-migration or when nothing is queued.
+- Server actions (`app/settings/actions.ts`):
+  - `addPendingChange(formData)` — fields `date` (optional YYYY-MM-DD; omit
+    for a general instruction), `requested_type` and/or `instruction` (at
+    least one), optional `week_start_date` (defaults to the plan/boundary week).
+  - `removePendingChange(formData)` — `id`, optional `week_start_date`.
+  - `clearPendingChanges(formData)` — optional `week_start_date`.
+  - `savePendingCheckin(formData)` — `checkin_note` (empty clears), optional
+    `week_start_date`. Persists with the queue so it survives navigation.
+- Apply: `POST /api/plan/generate` with `{ "apply_pending": true }` — one
+  call that (a) writes the inline check-in through the weekly_feedback path,
+  (b) fires ONE regeneration via the U7 revise semantics with the whole batch
+  serialised into the revision context (keep-stable rules apply), and (c)
+  clears the queue on success only. Empty queue → `400 { error }`. Same rate
+  limits and generate-then-swap as every manual generation; response is the
+  generation response plus `applied: true`. A plain `revision_note` in the
+  same body is folded in as an extra general instruction.
+
 ## 9. States checklist (stress-tester map)
 
 Every tab screen implements: **loading** (route `loading.tsx` skeletons), **empty** (specified

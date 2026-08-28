@@ -182,3 +182,28 @@ create policy "authenticated full access" on manual_activities for all using (au
 -- generation).
 alter table weekly_plans add column if not exists revision_note text;
 alter table weekly_plans add column if not exists revised_at timestamptz;
+
+-- ---------------------------------------------------------------------------
+-- V2 migration (run this block in the Supabase SQL Editor)
+-- Idempotent: safe to run more than once.
+-- ---------------------------------------------------------------------------
+
+-- Away/home status engine (REDESIGN-V2.md): the event's location display
+-- name, used to detect non-home-base (not Manchester/London) days.
+alter table calendar_events add column if not exists location text;
+
+-- Batch plan editing (REDESIGN-V2.md §Screen 2): queued change requests plus
+-- the inline check-in note, per plan week. Applied in one revision call via
+-- POST /api/plan/generate { apply_pending: true }; deleted on successful
+-- apply.
+create table if not exists pending_changes (
+  week_start_date date primary key,
+  changes jsonb not null default '[]'::jsonb, -- [{ id, date|null, requested_type|null, instruction|null }]
+  checkin_note text not null default '',
+  updated_at timestamptz not null default now()
+);
+
+alter table pending_changes enable row level security;
+
+drop policy if exists "authenticated full access" on pending_changes;
+create policy "authenticated full access" on pending_changes for all using (auth.role() = 'authenticated');

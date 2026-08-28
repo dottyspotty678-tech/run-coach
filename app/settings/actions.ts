@@ -1,7 +1,7 @@
 "use server";
 
 import { createServiceClient } from "@/lib/supabase/service";
-import { mondayOf, todayISO } from "@/components/dates";
+import { boundaryWeekStart, mondayOf, todayISO } from "@/components/dates";
 import { revalidatePath } from "next/cache";
 
 function splitList(value: string): string[] {
@@ -212,5 +212,98 @@ export async function deleteManualActivity(formData: FormData) {
   await supabase.from("manual_activities").delete().eq("id", id);
   revalidatePath("/activities");
   revalidatePath("/");
+  revalidatePath("/plan");
+}
+
+// ---------------------------------------------------------------------------
+// Pending plan changes (V2, REDESIGN-V2.md §Screen 2) — write side. Interface
+// contract in docs/DESIGN.md §8d. Changes accumulate here and NOTHING
+// regenerates until POST /api/plan/generate { apply_pending: true } fires one
+// batched revision. Cleared on successful apply only.
+// ---------------------------------------------------------------------------
+
+function pendingWeek(formData: FormData): string {
+  const raw = String(formData.get("week_start_date") ?? "");
+  // The edit mode always targets the plan (boundary) week.
+  return /^\d{4}-\d{2}-\d{2}$/.test(raw) ? mondayOf(raw) : boundaryWeekStart(new Date());
+}
+
+async function readPendingChanges(week: string): Promise<unknown[]> {
+  const supabase = createServiceClient();
+  const { data } = await supabase
+    .from("pending_changes")
+    .select("changes")
+    .eq("week_start_date", week)
+    .maybeSingle();
+  return Array.isArray(data?.changes) ? (data.changes as unknown[]) : [];
+}
+
+/**
+ * Queues one change request. Fields: `date` (optional YYYY-MM-DD — omit for a
+ * general instruction), `requested_type` (optional plan session type) and/or
+ * `instruction` (optional free text) — at least one of the last two required;
+ * `week_start_date` optional (defaults to the plan week).
+ */
+export async function addPendingChange(formData: FormData) {
+  const requestedType = String(formData.get("requested_type") ?? "").trim() || null;
+  const instruction = String(formData.get("instruction") ?? "").trim() || null;
+  if (!requestedType && !instruction) return;
+  const rawDate = String(formData.get("date") ?? "");
+  const date = /^\d{4}-\d{2}-\d{2}$/.test(rawDate) ? rawDate : null;
+
+  const week = pendingWeek(formData);
+  const changes = await readPendingChanges(week);
+  changes.push({ id: crypto.randomUUID(), date, requested_type: requestedType, instruction });
+
+  const supabase = createServiceClient();
+  await supabase.from("pending_changes").upsert({
+    week_start_date: week,
+    changes,
+    updated_at: new Date().toISOString(),
+  });
+  revalidatePath("/plan");
+}
+
+/** Removes one queued change. Fields: `id` (the change's uuid), optional `week_start_date`. */
+export async function removePendingChange(formData: FormData) {
+  const id = String(formData.get("id") ?? "");
+  if (!id) return;
+  const week = pendingWeek(formData);
+  const changes = (await readPendingChanges(week)).filter(
+    (c) => !(typeof c === "object" && c !== null && (c as Record<string, unknown>).id === id)
+  );
+  const supabase = createServiceClient();
+  await supabase.from("pending_changes").upsert({
+    week_start_date: week,
+    changes,
+    updated_at: new Date().toISOString(),
+  });
+  revalidatePath("/plan");
+}
+
+/** Clears the week's queued changes and inline check-in note. Optional `week_start_date`. */
+export async function clearPendingChanges(formData: FormData) {
+  const week = pendingWeek(formData);
+  const supabase = createServiceClient();
+  await supabase.from("pending_changes").delete().eq("week_start_date", week);
+  revalidatePath("/plan");
+}
+
+/**
+ * Saves the edit mode's inline check-in note (persisted with the pending
+ * changes; written to weekly_feedback when the batch is applied). Fields:
+ * `checkin_note` (may be empty to clear), optional `week_start_date`.
+ */
+export async function savePendingCheckin(formData: FormData) {
+  const week = pendingWeek(formData);
+  const checkinNote = String(formData.get("checkin_note") ?? "").trim();
+  const supabase = createServiceClient();
+  // Partial upsert: only the provided columns update, so queued changes
+  // survive (a fresh insert gets the empty-array default).
+  await supabase.from("pending_changes").upsert({
+    week_start_date: week,
+    checkin_note: checkinNote,
+    updated_at: new Date().toISOString(),
+  });
   revalidatePath("/plan");
 }

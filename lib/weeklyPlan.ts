@@ -2,13 +2,13 @@ import Anthropic from "@anthropic-ai/sdk";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getTrainingPhase } from "@/lib/trainingPhase";
 import {
-  isMealEntry,
+  isAwayMealEntry,
   isShoppingItem,
   isTrainingDay,
   SESSION_TYPES,
   SHOPPING_CATEGORIES,
-  type MealEntry,
-  type MealType,
+  type AwayMealEntry,
+  type RecipeIngredient,
   type SessionType,
   type ShoppingCategory,
   type ShoppingItem,
@@ -26,6 +26,7 @@ import {
   weekDates,
 } from "@/components/dates";
 import {
+  awayDatesForRange,
   getInjuryHistory,
   getRecentActivities,
   getRecentFeedback,
@@ -45,7 +46,10 @@ import {
 type PlanContext = {
   weekStart: string;
   weekDatesList: string[];
+  /** Travel-flagged dates — inform TRAINING sessions (unchanged from v1). */
   travelDates: string[];
+  /** V2 away/home engine output — governs MEALS (meal-prep model). */
+  awayDates: string[];
   sections: {
     trainingSummary: string;
     calendarSummary: string;
@@ -75,7 +79,9 @@ async function buildContext(): Promise<PlanContext> {
     getRecentActivities(28),
     supabase
       .from("calendar_events")
-      .select("external_id, title, start_time, end_time, is_all_day, is_travel")
+      // select("*") so the optional V2 location column is included when it
+      // exists and the query still works pre-migration.
+      .select("*")
       .lt("start_time", `${weekEnd}T00:00:00Z`)
       .gte("end_time", `${weekStart}T00:00:00Z`)
       .order("start_time", { ascending: true }),
@@ -141,6 +147,8 @@ async function buildContext(): Promise<PlanContext> {
 
   const eventRows = (events ?? []) as CalendarEventRow[];
   const travelDates = [...travelDatesFromEvents(eventRows, weekDatesList)].sort();
+  // V2: the away/home engine (hotel spans + non-home locations) drives meals.
+  const awayDates = [...awayDatesForRange(eventRows, weekDatesList)].sort();
 
   const calendarSummary =
     eventRows.length > 0
@@ -209,6 +217,7 @@ ${feedbackLines}`;
     weekStart,
     weekDatesList,
     travelDates,
+    awayDates,
     sections: {
       trainingSummary,
       calendarSummary,
@@ -243,7 +252,7 @@ const EVIDENCE_PRINCIPLES = `TRAINING AND NUTRITION PRINCIPLES (evidence-based �
 const WEEKLY_PLAN_TOOL = {
   name: "provide_weekly_plan",
   description:
-    "Provide the structured weekly training plan, evening meal plan and consolidated shopping list.",
+    "Provide the structured weekly training plan, away-day meal-prep recipes and consolidated shopping list.",
   input_schema: {
     type: "object" as const,
     properties: {
@@ -295,55 +304,57 @@ const WEEKLY_PLAN_TOOL = {
       },
       meals: {
         type: "array",
-        description: "Exactly 7 evening-meal entries, one per day, Monday first.",
+        description:
+          "Meal-prep recipes for AWAY days only: exactly one entry per away date listed in the prompt, dates matching exactly. Home days get NO meals. Empty array when the week has no away days.",
         items: {
           type: "object",
           properties: {
-            date: { type: "string", description: "YYYY-MM-DD" },
-            meal_type: {
-              type: "string",
-              enum: ["home", "travel", "assemble"],
-              description:
-                "home = a recipe; travel = eating-out guidance (travel days only); assemble = a no-cook or one-pan fallback of 10 minutes or less.",
-            },
-            prep_time_min: { type: "integer", description: "Minutes; 0 for travel." },
+            date: { type: "string", description: "YYYY-MM-DD — must be one of the away dates." },
             recipe_name: {
               type: "string",
-              description:
-                'Plain, appetising name for home/assemble meals; a short label like "Hotel dinner" for travel days.',
+              description: 'Plain, appetising name, e.g. "Chorizo and butter bean stew".',
+            },
+            prep_time_min: {
+              type: "integer",
+              description: "Minutes to prep/cook ahead at home before travelling.",
             },
             ingredients: {
               type: "array",
-              items: { type: "string" },
-              description: "Empty for travel days.",
+              description: "Every ingredient with a qualitative quantity.",
+              items: {
+                type: "object",
+                properties: {
+                  item: { type: "string" },
+                  quantity: {
+                    type: "string",
+                    description:
+                      'Qualitative, e.g. "2 fillets", "1 bag"; natural weights like "500 g passata" are fine.',
+                  },
+                },
+                required: ["item", "quantity"],
+              },
             },
-            short_instructions: {
+            method: {
               type: "string",
               description:
-                "Home/assemble: a method of 4 short steps or fewer. Travel: 1-2 sentences of sensible ordering guidance tied to training and the weight goal.",
+                "Full cooking method, at most 4 short steps — written for cooking ahead at home.",
             },
           },
-          required: [
-            "date",
-            "meal_type",
-            "prep_time_min",
-            "recipe_name",
-            "ingredients",
-            "short_instructions",
-          ],
+          required: ["date", "recipe_name", "prep_time_min", "ingredients", "method"],
         },
       },
       shopping_list: {
         type: "array",
         description:
-          "Consolidated across the week's home and assemble meals only; empty if every day is a travel day.",
+          "Exactly the away-day meals' ingredients, consolidated across recipes. Empty when there are no away days.",
         items: {
           type: "object",
           properties: {
             item: { type: "string" },
             quantity_note: {
               type: "string",
-              description: 'Qualitative, e.g. "2 large", "1 bag", "small bunch".',
+              description:
+                'The quantity to buy — qualitative, e.g. "2 fillets", "1 bag", "small bunch".',
             },
             category: { type: "string", enum: [...SHOPPING_CATEGORIES] },
           },
@@ -364,8 +375,12 @@ type RevisionRequest = {
 function buildPrompt(context: PlanContext, revision?: RevisionRequest | null): string {
   const travelLine =
     context.travelDates.length > 0
-      ? `Travel days this week (from the calendar): ${context.travelDates.join(", ")}.`
+      ? `Travel days this week (from the calendar — these shape TRAINING sessions): ${context.travelDates.join(", ")}.`
       : "No travel days this week.";
+  const awayLine =
+    context.awayDates.length > 0
+      ? `Away days this week (nights away from home — these are the ONLY days that get meals, prepped ahead): ${context.awayDates.join(", ")}.`
+      : "No away days this week — return an empty meals array and an empty shopping list.";
 
   // U7: when revising, the current plan and the notes lead the prompt, with a
   // keep-stable instruction — the point is a tweak, not a fresh plan.
@@ -381,14 +396,15 @@ ${revision.currentPlanJson}
 Revision rules:
 - Change ONLY what the notes require, plus the minimum knock-on adjustments needed to keep the week coherent (for example, moving the long run may mean swapping the adjacent rest day, or moving its carb-forward meal with it).
 - Keep everything else stable: the same dates, and identical session types, titles, details, whys, meals and shopping items for days the notes do not implicate. Do not reword or "improve" unchanged content.
-- Still return the complete week in full through the tool: all 7 training_days, all 7 meals and the full shopping list, unchanged entries included verbatim.`
+- Still return the complete week in full through the tool: all 7 training_days, one meal per away day and the full shopping list, unchanged entries included verbatim.`
     : "";
 
-  return `You are a UK running club coach and a practical meal planner for one busy consultant. Produce next week's structured training plan, evening meal plan and shopping list in a single response using the provide_weekly_plan tool.
+  return `You are a UK running club coach and a practical meal-prep planner for one busy consultant. Produce next week's structured training plan, away-day meal-prep recipes and shopping list in a single response using the provide_weekly_plan tool.
 
 THE WEEK:
-The week starts ${context.weekStart} (Monday). Produce exactly 7 training_days and exactly 7 meals with these consecutive dates: ${context.weekDatesList.join(", ")}.
-${travelLine}${revisionBlock}
+The week starts ${context.weekStart} (Monday). Produce exactly 7 training_days with these consecutive dates: ${context.weekDatesList.join(", ")}. Produce exactly one meal for each away day listed below, and no meals for any other day.
+${travelLine}
+${awayLine}${revisionBlock}
 
 TRAINING HISTORY (last 28 days):
 ${context.sections.trainingSummary}
@@ -416,20 +432,21 @@ TRAINING RULES:
 - Hard and long running sessions go on non-travel days where possible. Travel days get rest, easy runs, strength (gyms travel with you), or short hotel-friendly runs (for example "30 min easy from the hotel — out-and-back, no route needed").
 - Set is_travel_day true only for the travel dates listed above.
 - duration_min is 0 for rest days. Rest days still get a proper title, detail and why — never an empty entry.
+- Any total volume stated in week_summary MUST equal what the seven training_days actually add up to — recount the sessions before writing it (f-1).
 
-MEAL RULES:
-- One evening meal per day. Every travel date listed above must be meal_type "travel": no recipe, empty ingredients, prep_time_min 0, and short_instructions gives 1-2 sentences of sensible eating-out guidance tied to that day's training and the weight goal (suggestive, never preachy).
-- Travel-day short_instructions must read as ordering guidance (what to choose when eating out), NEVER a cooking method — no preparation steps, no "drain / chop / mix". Treat every travel day as eating out even if the accommodation might allow self-catering (hotel apartment, holiday cottage): the shopping happens at home on Sunday, so travel days cannot be cooked for.
-- Home meals: varied across the week but drawing on a deliberately small shared ingredient pool — maximise reuse of fresh and perishable ingredients across the week's home meals to cut waste.
-- Respect the dietary restrictions and disliked ingredients above, and scale wording to the household size.
-- Hard-session and long-run days get heartier, carb-forward meals; rest days lighter — stated qualitatively ("bigger portion tonight — long run tomorrow"), never numerically.
-- A weekend home day may include one batch-cook whose leftovers cover a named weekday.
-- Use "assemble" for a late or rushed evening: a no-cook or one-pan meal of 10 minutes or less.
+MEAL-PREP RULES (v2 — meals exist ONLY for the away days listed above):
+- One real recipe per away day, nothing for home days. Do not produce eating-out guidance, restaurant advice or placeholder meals anywhere — that model is retired.
+- This is meal prep: the runner cooks everything at home BEFORE travelling and takes the food along. Every recipe must survive that — batch-friendly, transportable, and good reheated or eaten cold. No dishes that only work straight from the pan.
+- Every ingredient gets a qualitative quantity ("2 fillets", "1 bag"; natural weights like "500 g passata" are fine). Never calories, macros or points.
+- Reuse overlapping fresh and perishable ingredients across the away-day recipes to cut waste; respect the dietary restrictions and disliked ingredients above; scale portions to what one person needs while away (household size matters only for what is cooked, not the travel portions).
+- Match heartiness to that day's training qualitatively (carb-forward the evening before hard or long sessions), never numerically.
+- method is at most 4 short steps, written for one prep session at home.
 
 SHOPPING LIST RULES:
-- Consolidate across the week's home and assemble meals only. Travel days contribute nothing: never include an item that only a travel-day meal would use. Every item on the list must trace to a home or assemble meal's ingredients. If every day is travel, return an empty list.
+- The list is exactly the away-day recipes' ingredients, consolidated across recipes: every item must trace to an away-day recipe, and every recipe ingredient must appear (merged where recipes share it).
+- quantity_note is the amount to buy — qualitative ("2 fillets", "1 bag", "small bunch"); natural weights fine.
 - Assume a stocked store cupboard: leave out true staples (oil, salt, pepper, common dried herbs and spices).
-- quantity_note is qualitative ("2 large", "1 bag", "small bunch") — no weights unless natural (for example "500 g passata").
+- If there are no away days, return an empty list.
 
 STYLE RULES (strict):
 - UK English throughout: -ise endings, chilli not chili, yoghurt not yogurt. Metric units only (km, min/km).
@@ -449,7 +466,7 @@ type RawPlan = {
 type ValidatedPlan = {
   week_summary: string;
   training_days: TrainingDay[];
-  meals: MealEntry[];
+  meals: AwayMealEntry[];
   shopping_list: ShoppingItem[];
 };
 
@@ -524,39 +541,40 @@ function coerceTrainingDay(
   };
 }
 
-function coerceMeal(
+/** V2: coerce a recipe ingredient list — strings become {item, quantity: ""}. */
+function coerceIngredients(raw: unknown, date: string, warnings: string[]): RecipeIngredient[] {
+  if (!Array.isArray(raw)) {
+    warnings.push(`Meal for ${date} has no ingredients array`);
+    return [];
+  }
+  const out: RecipeIngredient[] = [];
+  for (const i of raw) {
+    if (typeof i === "string") {
+      if (i.trim()) out.push({ item: i.trim(), quantity: "" });
+      continue;
+    }
+    if (isRecord(i)) {
+      const item = coerceString(i.item ?? i.name).trim();
+      if (!item) continue;
+      out.push({ item, quantity: coerceString(i.quantity ?? i.quantity_note).trim() });
+    }
+  }
+  return out;
+}
+
+/** V2 meal-prep recipe for an away day. */
+function coerceAwayMeal(
   raw: Record<string, unknown>,
   date: string,
-  isTravel: boolean,
   warnings: string[]
-): MealEntry {
-  let meal_type: MealType;
-  if (isTravel) {
-    if (raw.meal_type !== "travel") warnings.push(`Coerced ${date} meal to travel (travel day)`);
-    meal_type = "travel";
-  } else if (
-    raw.meal_type === "home" ||
-    raw.meal_type === "travel" ||
-    raw.meal_type === "assemble"
-  ) {
-    meal_type = raw.meal_type;
-  } else {
-    warnings.push(`Coerced unknown meal_type "${String(raw.meal_type)}" on ${date} to home`);
-    meal_type = "home";
-  }
-  const ingredients =
-    meal_type === "travel"
-      ? []
-      : Array.isArray(raw.ingredients)
-        ? raw.ingredients.map((i) => coerceString(i)).filter(Boolean)
-        : [];
+): AwayMealEntry {
   return {
     date,
-    meal_type,
-    prep_time_min: meal_type === "travel" ? 0 : coerceMinutes(raw.prep_time_min),
-    recipe_name: coerceString(raw.recipe_name, meal_type === "travel" ? "Eating out" : "Dinner"),
-    ingredients,
-    short_instructions: coerceString(raw.short_instructions),
+    recipe_name: coerceString(raw.recipe_name, "Prep-ahead dinner"),
+    prep_time_min: coerceMinutes(raw.prep_time_min),
+    ingredients: coerceIngredients(raw.ingredients, date, warnings),
+    // Accept the old field name as a fallback if the model reaches for it.
+    method: coerceString(raw.method, coerceString(raw.short_instructions)),
   };
 }
 
@@ -624,35 +642,30 @@ function validatePlan(
     }
   }
 
-  // Meals: same date-matching rule. While coercing, remember which raw
-  // ingredients belonged to travel meals (the coercion empties them) and which
-  // belong to home/assemble meals — the shopping list is scrubbed against
-  // these below (m-5).
-  const meals: MealEntry[] = [];
-  const travelRawIngredients: string[] = [];
-  const homeIngredients: string[] = [];
+  // Meals (V2): one recipe per AWAY date, nothing else. Missing away-date
+  // recipes are hard errors (retried); meals for non-away dates are dropped
+  // with a warning — home days have no meals by definition.
+  const meals: AwayMealEntry[] = [];
+  const awaySet = new Set(context.awayDates);
   if (!Array.isArray(raw.meals)) {
-    errors.push("meals must be an array of exactly 7 entries, Monday first.");
+    errors.push(
+      "meals must be an array with exactly one recipe per away date (empty when there are no away days)."
+    );
   } else {
     const byDate = new Map<string, Record<string, unknown>>();
     for (const m of raw.meals) {
-      if (isRecord(m) && typeof m.date === "string") byDate.set(m.date, m);
+      if (isRecord(m) && typeof m.date === "string") {
+        if (awaySet.has(m.date)) byDate.set(m.date, m);
+        else warnings.push(`Dropped meal for ${m.date} — not an away day (home days get no meals)`);
+      }
     }
-    for (const date of context.weekDatesList) {
+    for (const date of context.awayDates) {
       const entry = byDate.get(date);
       if (!entry) {
-        errors.push(`meals is missing an entry for ${date}.`);
+        errors.push(`meals is missing a recipe for away day ${date}.`);
         continue;
       }
-      const meal = coerceMeal(entry, date, travelSet.has(date), warnings);
-      if (meal.meal_type === "travel") {
-        if (Array.isArray(entry.ingredients)) {
-          for (const i of entry.ingredients) if (typeof i === "string") travelRawIngredients.push(i);
-        }
-      } else {
-        homeIngredients.push(...meal.ingredients);
-      }
-      meals.push(meal);
+      meals.push(coerceAwayMeal(entry, date, warnings));
     }
   }
 
@@ -660,7 +673,7 @@ function validatePlan(
   // repaired or dropped.
   const shoppingList: ShoppingItem[] = [];
   if (!Array.isArray(raw.shopping_list)) {
-    errors.push("shopping_list must be an array (empty is allowed for an all-travel week).");
+    errors.push("shopping_list must be an array (empty when there are no away days).");
   } else {
     for (const s of raw.shopping_list) {
       if (!isRecord(s)) continue;
@@ -680,17 +693,26 @@ function validatePlan(
 
   if (errors.length > 0) return { plan: null, errors, warnings };
 
-  // m-5: drop shopping items that trace ONLY to travel-day meals' original
-  // ingredients — travel days contribute nothing to the Sunday shop (§3.5).
+  // V2 shopping scrub (m-5 lineage): the list is exactly the away recipes'
+  // ingredients — drop anything that traces to no recipe (and everything when
+  // there are no away days), and warn when a recipe ingredient never made it
+  // onto the list.
+  const recipeIngredientNames = meals.flatMap((m) => m.ingredients.map((i) => i.item));
   const scrubbedShopping = shoppingList.filter((s) => {
-    const travelOnly =
-      matchesAnyIngredient(s.item, travelRawIngredients) &&
-      !matchesAnyIngredient(s.item, homeIngredients);
-    if (travelOnly) {
-      warnings.push(`Dropped shopping item "${s.item}" — used only by a travel-day meal (m-5)`);
+    const traced =
+      recipeIngredientNames.length > 0 && matchesAnyIngredient(s.item, recipeIngredientNames);
+    if (!traced) {
+      warnings.push(
+        `Dropped shopping item "${s.item}" — it does not trace to any away-day recipe ingredient`
+      );
     }
-    return !travelOnly;
+    return traced;
   });
+  for (const name of recipeIngredientNames) {
+    if (!scrubbedShopping.some((s) => matchesAnyIngredient(s.item, [name]))) {
+      warnings.push(`Recipe ingredient "${name}" has no shopping-list item`);
+    }
+  }
 
   // Soft checks (warn only — never fail generation).
   const strengthCount = trainingDays.filter((d) => d.session_type === "strength").length;
@@ -705,7 +727,9 @@ function validatePlan(
     ...trainingDays
       .filter((d: unknown) => !isTrainingDay(d))
       .map((d) => `training day ${(d as TrainingDay).date}`),
-    ...meals.filter((m: unknown) => !isMealEntry(m)).map((m) => `meal ${(m as MealEntry).date}`),
+    ...meals
+      .filter((m: unknown) => !isAwayMealEntry(m))
+      .map((m) => `meal ${(m as AwayMealEntry).date}`),
     ...scrubbedShopping
       .filter((s: unknown) => !isShoppingItem(s))
       .map((s) => `shopping item ${(s as ShoppingItem).item}`),

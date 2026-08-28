@@ -3,7 +3,8 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { generateWeeklyPlan } from "@/lib/weeklyPlan";
 import { isStravaConnected, syncStravaActivities } from "@/lib/strava";
 import { isMicrosoftConnected, syncCalendarEvents } from "@/lib/microsoft";
-import { londonDateOf, todayISO } from "@/components/dates";
+import { boundaryWeekStart, formatDayShort, londonDateOf, mondayOf, todayISO } from "@/components/dates";
+import { getPendingChanges, type PendingChangesRow } from "@/components/data";
 
 // Manual plan generation (REQUIREMENTS §3.7). Server-enforced guardrails,
 // tracked in the generation_log table so they survive serverless restarts:
@@ -13,6 +14,28 @@ import { londonDateOf, todayISO } from "@/components/dates";
 const MIN_INTERVAL_MS = 2 * 60 * 1000;
 const MAX_PER_DAY = 8;
 
+/**
+ * V2 (§Screen 2): serialise the queued batch into one revision note. Dated
+ * structured requests first, then general instructions, then the inline
+ * check-in as context.
+ */
+function serialisePending(pending: PendingChangesRow, extraNote?: string): string {
+  const lines: string[] = [];
+  for (const c of pending.changes) {
+    const parts: string[] = [];
+    if (c.requested_type) parts.push(`change the session to "${c.requested_type}"`);
+    if (c.instruction) parts.push(c.instruction);
+    const what = parts.join(" — ");
+    lines.push(c.date ? `- ${formatDayShort(c.date)} (${c.date}): ${what}` : `- General: ${what}`);
+  }
+  if (extraNote) lines.push(`- General: ${extraNote}`);
+  let out = `Apply ALL of these requested changes together:\n${lines.join("\n")}`;
+  if (pending.checkin_note.trim()) {
+    out += `\nThe runner also added this check-in note (context for judgement, not a direct instruction): "${pending.checkin_note.trim()}"`;
+  }
+  return out;
+}
+
 export async function POST(request: Request) {
   const supabase = createServiceClient();
   let logId: number | null = null;
@@ -20,17 +43,30 @@ export async function POST(request: Request) {
   // U7 (round 2): an optional JSON body { revision_note: string } turns this
   // generation into a revision of the stored plan — same rate limits, same
   // generate-then-swap. No body (the plain Generate button) = fresh plan.
+  // V2 (§Screen 2): { apply_pending: true } instead applies the queued batch
+  // of pending changes in ONE revision call, clearing the queue on success.
   let revisionNote: string | undefined;
+  let applyPending = false;
   try {
-    const body = (await request.json()) as { revision_note?: unknown };
+    const body = (await request.json()) as { revision_note?: unknown; apply_pending?: unknown };
     if (typeof body?.revision_note === "string" && body.revision_note.trim()) {
       revisionNote = body.revision_note.trim().slice(0, 2000);
     }
+    applyPending = body?.apply_pending === true;
   } catch {
     // No/invalid JSON body — a normal generation.
   }
 
   try {
+    // Load the pending batch up front — an empty queue is a 400, not a spent
+    // generation.
+    let pending: PendingChangesRow | null = null;
+    if (applyPending) {
+      pending = await getPendingChanges(boundaryWeekStart(new Date()));
+      if (!pending || (pending.changes.length === 0 && !pending.checkin_note.trim())) {
+        return NextResponse.json({ error: "No pending changes to apply." }, { status: 400 });
+      }
+    }
     // Look back 48 h — more than enough to cover both limits.
     const since = new Date(Date.now() - 48 * 60 * 60 * 1000).toISOString();
     const { data: recent, error: logError } = await supabase
@@ -92,8 +128,29 @@ export async function POST(request: Request) {
     else if (results[1].status === "rejected")
       syncNotes.push("Calendar sync failed before generation — travel data may be stale.");
 
-    const result = await generateWeeklyPlan({ syncNotes, revisionNote });
-    return NextResponse.json(result);
+    // Apply flow step (a): persist the inline check-in through the existing
+    // weekly_feedback path BEFORE generating, keyed (like saveWeeklyFeedback)
+    // to the Monday of the week being described — today's week.
+    if (pending?.checkin_note.trim()) {
+      await supabase.from("weekly_feedback").upsert({
+        week_start_date: mondayOf(todayISO()),
+        feedback: pending.checkin_note.trim(),
+        updated_at: new Date().toISOString(),
+      });
+    }
+
+    // Apply flow step (b): ONE regeneration through the revise semantics,
+    // with the whole batch serialised into the revision context.
+    const effectiveRevisionNote = pending ? serialisePending(pending, revisionNote) : revisionNote;
+    const result = await generateWeeklyPlan({ syncNotes, revisionNote: effectiveRevisionNote });
+
+    // Apply flow step (c): clear the queue on success ONLY — a failed
+    // generation throws before this line and the batch survives for a retry.
+    if (pending) {
+      await supabase.from("pending_changes").delete().eq("week_start_date", pending.week_start_date);
+    }
+
+    return NextResponse.json({ ...result, applied: pending !== null });
   } catch (err) {
     console.error("Manual plan generation failed:", err);
     const message = err instanceof Error ? err.message : "Unknown error";

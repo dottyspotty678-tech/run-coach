@@ -28,6 +28,8 @@ export type CalendarEventRow = {
   end_time: string;
   is_all_day: boolean;
   is_travel: boolean;
+  /** V2: the event's location display name (null pre-migration/no location). */
+  location?: string | null;
 };
 
 export type SyncStatus = {
@@ -206,13 +208,165 @@ export function sessionDone(
 export async function getEventsForWeek(weekStart: string): Promise<CalendarEventRow[]> {
   const supabase = createServiceClient();
   const weekEnd = addDays(weekStart, 7);
+  // select("*") so the optional V2 `location` column is included when it
+  // exists and the query still works before the V2 migration runs.
   const { data } = await supabase
     .from("calendar_events")
-    .select("external_id, title, start_time, end_time, is_all_day, is_travel")
+    .select("*")
     .lt("start_time", `${weekEnd}T00:00:00Z`)
     .gte("end_time", `${weekStart}T00:00:00Z`)
     .order("start_time", { ascending: true });
   return (data as CalendarEventRow[] | null) ?? [];
+}
+
+// ---------------------------------------------------------------------------
+// Away/home status engine (V2, REDESIGN-V2.md §Away/home). Governs MEALS
+// (meal-prep model); the is_travel flag continues to govern TRAINING.
+// Home is the default. A day is AWAY when:
+//   1. a hotel-booking pattern starts a span: an event whose title looks like
+//      a check-in / hotel booking sets away from that day until the day
+//      before the matching check-out event (or the day before the event's
+//      own end for multi-day bookings); or
+//   2. an event carries a location that is NOT a home base (Manchester and
+//      London are home — explicit user decision): away from that day until
+//      the day before the event ends (so a same-day trip has no away days —
+//      the runner is home for dinner).
+// Events with no location and no hotel pattern do not change status. Virtual
+// "locations" (Teams/Zoom/etc.) are treated as no location.
+// ---------------------------------------------------------------------------
+
+const HOME_BASES = ["manchester", "london"];
+const VIRTUAL_LOCATION_HINTS = [
+  "teams",
+  "zoom",
+  "webex",
+  "google meet",
+  "skype",
+  "online",
+  "virtual",
+  "call",
+];
+const HOTEL_TITLE_PATTERNS = [
+  /check[\s-]?in/i,
+  /\bhotel\b/i,
+  /booking confirmation/i,
+  /reservation/i,
+];
+const CHECKOUT_TITLE_PATTERN = /check[\s-]?out/i;
+
+function isAwayLocation(location: string | null | undefined): boolean {
+  const loc = location?.trim().toLowerCase();
+  if (!loc) return false;
+  if (VIRTUAL_LOCATION_HINTS.some((v) => loc.includes(v))) return false;
+  return !HOME_BASES.some((h) => loc.includes(h));
+}
+
+/**
+ * The subset of `dates` (YYYY-MM-DD, London, ascending) on which the runner
+ * is AWAY, per the V2 rules above. Used by the Nutrition/Dashboard UI and by
+ * plan generation — one shared engine so they can never disagree.
+ */
+export function awayDatesForRange(events: CalendarEventRow[], dates: string[]): Set<string> {
+  const away = new Set<string>();
+  const rangeSet = new Set(dates);
+  const rangeEnd = dates[dates.length - 1];
+  if (!rangeEnd) return away;
+
+  // Check-out events terminate hotel spans; collect their (London) dates.
+  const checkoutDates = events
+    .filter((e) => CHECKOUT_TITLE_PATTERN.test(e.title ?? ""))
+    .map((e) => londonDateOf(e.start_time))
+    .sort();
+
+  const markSpan = (first: string, last: string) => {
+    for (let d = first; d <= last && d <= rangeEnd; d = addDays(d, 1)) {
+      if (rangeSet.has(d)) away.add(d);
+    }
+  };
+
+  for (const e of events) {
+    const title = e.title ?? "";
+    if (CHECKOUT_TITLE_PATTERN.test(title)) continue; // terminator only
+
+    const hotel = HOTEL_TITLE_PATTERNS.some((p) => p.test(title));
+    const awayLocation = isAwayLocation(e.location);
+    if (!hotel && !awayLocation) continue;
+
+    const start = londonDateOf(e.start_time);
+    let last = addDays(londonDateOf(e.end_time), -1); // home again on the end day
+
+    if (hotel) {
+      const checkout = checkoutDates.find((c) => c >= start);
+      if (checkout) last = addDays(checkout, -1);
+      // A check-in implies at least one night away even when the event
+      // itself is a single-day marker.
+      if (last < start) last = start;
+    } else if (last < start) {
+      continue; // same-day trip with a location: home for dinner
+    }
+
+    markSpan(start, last);
+  }
+
+  return away;
+}
+
+// ---------------------------------------------------------------------------
+// Pending plan changes (V2, REDESIGN-V2.md §Screen 2) — read side. Interface
+// contract in docs/DESIGN.md §8d. Degrades silently pre-migration.
+// ---------------------------------------------------------------------------
+
+export type PendingChange = {
+  /** Stable id for remove affordances (crypto.randomUUID). */
+  id: string;
+  /** YYYY-MM-DD within the plan week, or null for a general instruction. */
+  date: string | null;
+  /** Requested session type (a plan SessionType value), or null. */
+  requested_type: string | null;
+  /** Free-text instruction, or null. */
+  instruction: string | null;
+};
+
+export type PendingChangesRow = {
+  week_start_date: string;
+  changes: PendingChange[];
+  checkin_note: string;
+  updated_at: string;
+};
+
+/** Pending (not yet applied) plan changes for a week, or null when none. */
+export async function getPendingChanges(weekStart: string): Promise<PendingChangesRow | null> {
+  try {
+    const supabase = createServiceClient();
+    const { data, error } = await supabase
+      .from("pending_changes")
+      .select("week_start_date, changes, checkin_note, updated_at")
+      .eq("week_start_date", weekStart)
+      .maybeSingle();
+    if (error || !data) return null;
+    const raw = Array.isArray(data.changes) ? (data.changes as unknown[]) : [];
+    const changes: PendingChange[] = raw
+      .filter(
+        (c: unknown): c is Record<string, unknown> =>
+          typeof c === "object" &&
+          c !== null &&
+          typeof (c as Record<string, unknown>).id === "string"
+      )
+      .map((c) => ({
+        id: String(c.id),
+        date: typeof c.date === "string" ? c.date : null,
+        requested_type: typeof c.requested_type === "string" ? c.requested_type : null,
+        instruction: typeof c.instruction === "string" ? c.instruction : null,
+      }));
+    return {
+      week_start_date: data.week_start_date as string,
+      changes,
+      checkin_note: typeof data.checkin_note === "string" ? data.checkin_note : "",
+      updated_at: data.updated_at as string,
+    };
+  } catch {
+    return null;
+  }
 }
 
 /** Days of the week flagged as travel by calendar events (fallback when the plan is old-format). */
