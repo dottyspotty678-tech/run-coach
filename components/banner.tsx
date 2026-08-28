@@ -6,6 +6,8 @@ type BannerProps = {
   children: React.ReactNode;
   href?: string;
   linkLabel?: string;
+  /** V2 Dashboard: quieter than the hero — no fill, tinted text + hairline. */
+  quiet?: boolean;
 };
 
 const STYLES: Record<NonNullable<BannerProps["variant"]>, React.CSSProperties> = {
@@ -15,14 +17,29 @@ const STYLES: Record<NonNullable<BannerProps["variant"]>, React.CSSProperties> =
   ok: { color: "var(--ok)", background: "var(--ok-soft)" },
 };
 
-export function Banner({ variant = "info", children, href, linkLabel }: BannerProps) {
+const QUIET_COLORS: Record<NonNullable<BannerProps["variant"]>, string> = {
+  info: "var(--accent)",
+  warn: "var(--warn)",
+  error: "var(--danger)",
+  ok: "var(--ok)",
+};
+
+export function Banner({ variant = "info", children, href, linkLabel, quiet = false }: BannerProps) {
   const body = (
     <div
-      className="flex items-center gap-2 rounded-xl px-3 py-2.5 text-[13px] font-medium"
-      style={STYLES[variant]}
+      className={
+        quiet
+          ? "flex items-center gap-2 rounded-xl border px-3 py-1.5 text-[12px] font-medium"
+          : "flex items-center gap-2 rounded-xl px-3 py-2.5 text-[13px] font-medium"
+      }
+      style={
+        quiet
+          ? { color: QUIET_COLORS[variant], borderColor: "var(--line)" }
+          : STYLES[variant]
+      }
     >
       {variant !== "info" && variant !== "ok" && (
-        <IconAlert size={16} className="shrink-0" />
+        <IconAlert size={quiet ? 14 : 16} className="shrink-0" />
       )}
       <span className="min-w-0 flex-1">{children}</span>
       {href && linkLabel && <span className="shrink-0 underline underline-offset-2">{linkLabel}</span>}

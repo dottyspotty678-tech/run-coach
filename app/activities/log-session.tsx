@@ -231,19 +231,22 @@ function SessionSheet({
 
 /**
  * "Log a session" entry point (round 2, U6) — for sessions that never reach
- * Strava. `defaultType` lets the Today hero pre-select today's planned
- * session; `appearance` matches the app's button/text-action pair.
+ * Strava. `defaultType` lets the Dashboard hero pre-select today's planned
+ * session; `appearance` matches the app's button/text-action/tile patterns
+ * ("tile" = a V2 Dashboard quick-action cell; pass the icon as children).
  */
 export function LogSessionButton({
   todayIso,
   defaultType = "",
   appearance = "compact",
   label = "Log a session",
+  children,
 }: {
   todayIso: string;
   defaultType?: string;
-  appearance?: "compact" | "secondary";
+  appearance?: "compact" | "secondary" | "tile";
   label?: string;
+  children?: React.ReactNode;
 }) {
   const [open, setOpen] = useState(false);
 
@@ -252,6 +255,19 @@ export function LogSessionButton({
       {appearance === "secondary" ? (
         <button type="button" onClick={() => setOpen(true)} className="btn-secondary">
           {label}
+        </button>
+      ) : appearance === "tile" ? (
+        <button
+          type="button"
+          onClick={() => setOpen(true)}
+          className="card flex min-h-[64px] w-full items-center gap-2.5 px-3.5 py-3 text-left"
+        >
+          {children && (
+            <span className="shrink-0" style={{ color: "var(--accent)" }}>
+              {children}
+            </span>
+          )}
+          <span className="text-[14px] font-semibold leading-[18px]">{label}</span>
         </button>
       ) : (
         <button

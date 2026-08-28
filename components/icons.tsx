@@ -130,6 +130,24 @@ export function IconBackspace(props: IconProps) {
   );
 }
 
+export function IconFlag(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M5 21V4" />
+      <path d="M5 4c4-2 6 2 10 0v8c-4 2-6-2-10 0" />
+    </Svg>
+  );
+}
+
+export function IconPencil(props: IconProps) {
+  return (
+    <Svg {...props}>
+      <path d="M14.5 5.5 4 16v4h4L18.5 9.5" />
+      <path d="M13.5 6.5l4 4" />
+    </Svg>
+  );
+}
+
 export function IconPlane(props: IconProps) {
   return (
     <Svg {...props}>

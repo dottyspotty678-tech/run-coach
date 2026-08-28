@@ -3,12 +3,7 @@ import { getTrainingPhase } from "@/lib/trainingPhase";
 import { createServiceClient } from "@/lib/supabase/service";
 import { isStravaConnected } from "@/lib/strava";
 import { isMicrosoftConnected } from "@/lib/microsoft";
-import {
-  parseTrainingDays,
-  parseMeals,
-  parseLegacyMeals,
-  type TrainingDay,
-} from "@/lib/planTypes";
+import { parseTrainingDays, parseAwayMeals } from "@/lib/planTypes";
 import {
   boundaryWeekStart,
   formatDayShort,
@@ -20,24 +15,30 @@ import {
   weekDates,
 } from "@/components/dates";
 import {
+  awayDatesForRange,
   completedCategories,
   getEventsForWeek,
   getPlanForWeek,
   getRecentActivities,
   getRecentFeedback,
-  getRunnerContext,
   getSyncStatus,
   lastSuccessfulSync,
   runKm,
   sessionDone,
   travelDatesFromEvents,
 } from "@/components/data";
-import { SESSION_META, SessionBadge, MealBadge } from "@/components/session";
+import { SESSION_META, SessionBadge } from "@/components/session";
 import { Banner } from "@/components/banner";
 import { GeneratePlanButton } from "@/components/generate-plan";
 import { PullRefresh } from "@/components/pull-refresh";
 import { LogSessionButton } from "@/app/activities/log-session";
-import { IconChevronRight, IconTick } from "@/components/icons";
+import {
+  IconActivity,
+  IconChevronRight,
+  IconFlag,
+  IconPencil,
+  IconTick,
+} from "@/components/icons";
 
 // Reads the DB on every request — never serve a stale prerender.
 export const dynamic = "force-dynamic";
@@ -49,54 +50,54 @@ type RaceGoalRow = {
   target_time: string | null;
 };
 
-export default async function TodayPage() {
+// V2 Dashboard (docs/REDESIGN-V2.md §Screen 1): hero, away-day dinner card,
+// 7-day volume lookback (opens Activity history), 2x2 quick actions.
+export default async function DashboardPage() {
   const now = new Date();
   const today = todayISO(now);
   const heroWeekStart = mondayOf(today); // week that contains today
-  const stripWeekStart = boundaryWeekStart(now); // week the strip/banner shows
+  const boundaryWeek = boundaryWeekStart(now); // flips to next week Sun 17:00
 
   const supabase = createServiceClient();
   const [
     heroPlan,
-    stripPlan,
+    boundaryPlan,
     activities,
     stravaConnected,
     microsoftConnected,
     syncStatus,
     events,
     raceGoalRes,
-    runnerContext,
     recentFeedback,
   ] = await Promise.all([
     getPlanForWeek(heroWeekStart),
-    stripWeekStart === heroWeekStart
-      ? Promise.resolve(null)
-      : getPlanForWeek(stripWeekStart),
+    boundaryWeek === heroWeekStart ? Promise.resolve(null) : getPlanForWeek(boundaryWeek),
     getRecentActivities(28),
     isStravaConnected(),
     isMicrosoftConnected(),
     getSyncStatus(),
-    getEventsForWeek(stripWeekStart),
+    getEventsForWeek(heroWeekStart),
     supabase.from("race_goal").select("*").eq("id", true).maybeSingle(),
-    getRunnerContext(),
     getRecentFeedback(1),
   ]);
 
-  const shownStripPlan = stripWeekStart === heroWeekStart ? heroPlan : stripPlan;
   const raceGoal = (raceGoalRes.data as RaceGoalRow | null) ?? null;
 
   // --- Hero: today's session ---
   const heroDays = parseTrainingDays(heroPlan);
   const todaySession = heroDays?.find((d) => d.date === today) ?? null;
-  const heroMeals = parseMeals(heroPlan);
-  const todayMeal = heroMeals?.find((m) => m.date === today) ?? null;
-  const legacyMeal = heroMeals
-    ? null
-    : parseLegacyMeals(heroPlan).find((m) => m.date === today) ?? null;
+
+  // --- Dinner card (V2): ONLY when today is an AWAY day with a planned meal.
+  // Home days have no meal planning; legacy v1 rows render on Nutrition only.
+  const awayToday = awayDatesForRange(events, [today]).has(today);
+  const awayMeals = parseAwayMeals(heroPlan);
+  const dinner = awayToday
+    ? (awayMeals?.find((m) => m.date === today) ?? null)
+    : null;
 
   // --- Context chips ---
-  const stripDates = weekDates(stripWeekStart);
-  const eventTravelDates = travelDatesFromEvents(events, stripDates);
+  const heroDates = weekDates(heroWeekStart);
+  const eventTravelDates = travelDatesFromEvents(events, heroDates);
   const isTravelToday = todaySession
     ? todaySession.is_travel_day
     : eventTravelDates.has(today);
@@ -111,36 +112,36 @@ export default async function TodayPage() {
         : `${Math.round(phaseInfo.weeksToRace)} weeks to ${raceGoal.race_name}`
       : null;
 
-  // --- Snapshot stats (running only — U1) ---
+  // --- Volume lookback (running only — U1) + sessions-done summary ---
   const last7Km = runKm(activities, 7, now);
-  const last28Km = runKm(activities, undefined, now);
   const done = completedCategories(activities);
+  const plannedSoFar = (heroDays ?? []).filter(
+    (d) => d.date <= today && d.session_type !== "rest"
+  );
+  const doneSoFar = plannedSoFar.filter((d) => sessionDone(d.session_type, done.get(d.date)));
+  const activityCount7 = activities.filter(
+    (a) => now.getTime() - new Date(a.start_date).getTime() <= 7 * 86400000
+  ).length;
 
-  // --- Banners ---
+  // --- Banners (quieter than the hero in V2) ---
   const lastSync = lastSuccessfulSync(syncStatus);
   const syncStale =
     lastSync !== null && now.getTime() - new Date(lastSync).getTime() > 24 * 3600000;
   const stravaBroken = !stravaConnected || !!syncStatus.strava?.last_error;
   const microsoftBroken = !microsoftConnected || !!syncStatus.microsoft?.last_error;
 
-  // --- Sunday evening (m-2 rework): from 17:00 the whole app already shows
-  // next week, so "plan ready" frames the week strip instead of shouting from
-  // a separate banner about the same week the user is looking at.
+  // Sunday evening: the app already shows next week from 17:00; with the v1
+  // week strip gone, a single quiet banner is the one voice for "plan ready".
   const sundayEvening = isSundayEvening(now);
-  const planReady = sundayEvening && shownStripPlan !== null;
+  const planReady =
+    sundayEvening && (boundaryWeek === heroWeekStart ? heroPlan : boundaryPlan) !== null;
 
-  // --- Check-in (§3.11): Sunday nudge when this week's note is still empty.
+  // Check-in nudge: Sunday, and this week's note is still empty.
   const isSunday = londonParts(now).weekday === 7;
   const hasThisWeeksFeedback = recentFeedback.some(
     (f) => f.week_start_date === heroWeekStart
   );
   const showCheckinNudge = isSunday && !hasThisWeeksFeedback;
-
-  // --- Strip sessions (travel fallback from events when plan is old-format) ---
-  const stripDays = parseTrainingDays(shownStripPlan);
-  const stripByDate = new Map<string, TrainingDay>(
-    (stripDays ?? []).map((d) => [d.date, d])
-  );
 
   const hasAnyPlan = heroPlan !== null;
 
@@ -169,24 +170,34 @@ export default async function TodayPage() {
           </div>
         </header>
 
-        {/* Banners */}
+        {/* Banners — quiet in V2, the hero dominates */}
+        {planReady && (
+          <Banner quiet variant="info" href="/plan" linkLabel="Review it">
+            Next week's plan is ready
+          </Banner>
+        )}
+        {sundayEvening && !planReady && (
+          <Banner quiet variant="info" href="/plan" linkLabel="Plan tab">
+            Next week's plan generates this evening
+          </Banner>
+        )}
         {showCheckinNudge && (
-          <Banner variant="info" href="/checkin" linkLabel="Check in">
+          <Banner quiet variant="info" href="/checkin" linkLabel="Check in">
             How did this week feel? A 30-second note shapes next week's plan
           </Banner>
         )}
         {stravaBroken && (
-          <Banner variant="warn" href="/settings#connections" linkLabel="Settings">
-            {stravaConnected ? "Strava sync failing — reconnect" : "Strava disconnected — reconnect"} in Settings
+          <Banner quiet variant="warn" href="/settings#connections" linkLabel="Settings">
+            {stravaConnected ? "Strava sync failing" : "Strava disconnected"} — reconnect in Settings
           </Banner>
         )}
         {microsoftBroken && (
-          <Banner variant="warn" href="/settings#connections" linkLabel="Settings">
-            {microsoftConnected ? "Calendar sync failing — reconnect" : "Calendar disconnected — reconnect"} in Settings
+          <Banner quiet variant="warn" href="/settings#connections" linkLabel="Settings">
+            {microsoftConnected ? "Calendar sync failing" : "Calendar disconnected"} — reconnect in Settings
           </Banner>
         )}
         {!stravaBroken && !microsoftBroken && syncStale && (
-          <Banner variant="warn">
+          <Banner quiet variant="warn">
             Data last synced {relativeTime(lastSync, now)} — pull down to refresh
           </Banner>
         )}
@@ -196,7 +207,8 @@ export default async function TodayPage() {
           <section className="card flex flex-col items-start gap-3 p-5">
             <h2 className="text-[20px] font-semibold">No plan yet for this week</h2>
             <p className="text-[14px]" style={{ color: "var(--ink-2)" }}>
-              Generate the week's training and meals from your calendar and recent running.
+              Generate the week's training and away-day meals from your calendar and recent
+              running.
             </p>
             <GeneratePlanButton hasPlan={false} />
           </section>
@@ -251,161 +263,79 @@ export default async function TodayPage() {
           </section>
         )}
 
-        {/* Tonight's meal */}
-        {(todayMeal || legacyMeal) && (
+        {/* Tonight's dinner — away days only (V2 meal-prep model) */}
+        {dinner && (
           <Link href={`/food#d${today}`} className="card block p-4">
             <div className="flex items-center justify-between gap-2">
               <span className="overline" style={{ color: "var(--ink-2)" }}>
-                Tonight
+                Tonight — away
               </span>
-              <span className="flex items-center gap-2">
-                {todayMeal && <MealBadge type={todayMeal.meal_type} />}
-                {todayMeal && todayMeal.meal_type !== "travel" && (
-                  <span className="text-[13px] font-semibold tabular" style={{ color: "var(--ink-2)" }}>
-                    {todayMeal.prep_time_min} min
-                  </span>
-                )}
-              </span>
+              {dinner.prep_time_min > 0 && (
+                <span className="text-[13px] font-semibold tabular" style={{ color: "var(--ink-2)" }}>
+                  {dinner.prep_time_min} min prep
+                </span>
+              )}
             </div>
-            <h3 className="mt-1.5 text-[17px] font-semibold leading-6">
-              {(todayMeal ?? legacyMeal)!.recipe_name}
-            </h3>
-            <p className="mt-1 text-[14px] line-clamp-2" style={{ color: "var(--ink-2)" }}>
-              {firstLine((todayMeal ?? legacyMeal)!.short_instructions)}
+            <h3 className="mt-1.5 text-[17px] font-semibold leading-6">{dinner.recipe_name}</h3>
+            <p className="mt-1 text-[13px]" style={{ color: "var(--ink-2)" }}>
+              Prepped ahead — recipe on the Nutrition tab
             </p>
           </Link>
         )}
 
-        {/* Check-in row (§3.11): one tap to the jot screen, and the injuries
-            read-back so it is always obvious what the planner believes. */}
-        <Link href="/checkin" className="card flex min-h-[52px] items-center gap-3 px-4 py-2.5">
+        {/* Volume lookback — opens the Activity history screen */}
+        <Link href="/activities" className="card flex items-center gap-3 p-4">
           <span className="min-w-0 flex-1">
             <span className="overline block" style={{ color: "var(--ink-2)" }}>
-              Check-in
+              Training volume — last 7 days
             </span>
-            <span
-              className="block truncate text-[13px]"
-              style={{ color: runnerContext?.injuries ? "var(--warn)" : "var(--ink-3)" }}
-            >
-              {runnerContext?.injuries
-                ? `Working around: ${runnerContext.injuries}`
-                : hasThisWeeksFeedback
-                  ? "This week's note is in — edit any time"
-                  : "Injuries and how the week felt"}
+            <span className="mt-1 block text-[24px] font-semibold tabular leading-7">
+              {last7Km.toFixed(0)}
+              <span className="text-[14px] font-medium" style={{ color: "var(--ink-2)" }}>
+                {" "}km running
+              </span>
+            </span>
+            <span className="mt-0.5 flex items-center gap-1 text-[12px]" style={{ color: "var(--ink-2)" }}>
+              {plannedSoFar.length > 0 ? (
+                <>
+                  <IconTick size={12} strokeWidth={2.8} style={{ color: "var(--ok)" }} />
+                  {doneSoFar.length} of {plannedSoFar.length} planned sessions done this week
+                </>
+              ) : (
+                `${activityCount7} ${activityCount7 === 1 ? "session" : "sessions"} in the last 7 days`
+              )}
             </span>
           </span>
           <IconChevronRight size={16} strokeWidth={2.2} className="shrink-0" style={{ color: "var(--ink-3)" }} />
         </Link>
 
-        {/* Week strip — from Sunday 17:00 this is next week (§3.3), so the
-            "plan ready" message frames the strip rather than duplicating it
-            in a banner (m-2). */}
-        <section className="flex flex-col gap-2">
-          <div className="flex items-baseline justify-between">
-            <h2 className="overline" style={{ color: "var(--ink-2)" }}>
-              {sundayEvening ? "Next week" : "This week"}
-            </h2>
-            {planReady && (
-              <Link
-                href="/plan"
-                className="text-[13px] font-semibold"
-                style={{ color: "var(--accent)" }}
-              >
-                Plan ready — review it
-              </Link>
-            )}
-            {sundayEvening && !planReady && (
-              <span className="text-[12px]" style={{ color: "var(--ink-3)" }}>
-                No plan yet — generating this evening
-              </span>
-            )}
-          </div>
-          <div className="grid grid-cols-7 gap-1.5">
-            {stripDates.map((date, i) => {
-              const day = stripByDate.get(date);
-              const meta = day ? SESSION_META[day.session_type] : null;
-              const isToday = date === today;
-              const travel = day ? day.is_travel_day : eventTravelDates.has(date);
-              const isDone = sessionDone(day?.session_type, done.get(date));
-              return (
-                <Link
-                  key={date}
-                  href={`/plan#d${date}`}
-                  className="flex min-h-[64px] flex-col items-center justify-between rounded-xl px-0.5 py-1.5"
-                  style={{
-                    background: isToday ? "var(--accent-soft)" : "var(--surface)",
-                    border: `1px solid ${isToday ? "var(--accent)" : "var(--line)"}`,
-                  }}
-                >
-                  <span
-                    className="text-[10px] font-semibold"
-                    style={{ color: isToday ? "var(--accent)" : "var(--ink-3)" }}
-                  >
-                    {["M", "T", "W", "T", "F", "S", "S"][i]}
-                  </span>
-                  <span
-                    className="text-[10px] font-bold leading-3"
-                    style={{ color: meta ? meta.color : "var(--ink-3)" }}
-                  >
-                    {meta ? meta.abbrev : "–"}
-                  </span>
-                  <span className="flex h-3 items-center gap-0.5">
-                    {isDone && (
-                      <IconTick size={11} strokeWidth={3} className="shrink-0" style={{ color: "var(--ok)" }} />
-                    )}
-                    {travel && (
-                      <span
-                        className="h-1.5 w-1.5 rounded-full"
-                        style={{ background: "var(--s-long)" }}
-                        aria-label="Travel day"
-                      />
-                    )}
-                  </span>
-                </Link>
-              );
-            })}
-          </div>
-        </section>
-
-        {/* Snapshot row */}
-        <section className="grid grid-cols-3 gap-1.5">
-          <div className="card flex flex-col gap-0.5 p-3">
-            <span className="text-[20px] font-semibold tabular leading-6">
-              {last7Km.toFixed(0)}
-              <span className="text-[13px] font-medium" style={{ color: "var(--ink-2)" }}>
-                {" "}km
-              </span>
+        {/* Quick actions (2x2) */}
+        <section className="grid grid-cols-2 gap-1.5">
+          <LogSessionButton todayIso={today} appearance="tile" label="Log a session">
+            <IconActivity size={18} strokeWidth={2} />
+          </LogSessionButton>
+          <Link href="/settings#race" className="card flex min-h-[64px] items-center gap-2.5 px-3.5 py-3">
+            <span className="shrink-0" style={{ color: "var(--accent)" }}>
+              <IconFlag size={18} strokeWidth={2} />
             </span>
-            <span className="text-[11px]" style={{ color: "var(--ink-2)" }}>
-              Last 7 days
+            <span className="text-[14px] font-semibold leading-[18px]">
+              {raceGoal ? "Update goal race" : "Add a goal race"}
             </span>
-          </div>
-          <div className="card flex flex-col gap-0.5 p-3">
-            <span className="text-[20px] font-semibold tabular leading-6">
-              {last28Km.toFixed(0)}
-              <span className="text-[13px] font-medium" style={{ color: "var(--ink-2)" }}>
-                {" "}km
-              </span>
+          </Link>
+          <Link href="/checkin" className="card flex min-h-[64px] items-center gap-2.5 px-3.5 py-3">
+            <span className="shrink-0" style={{ color: "var(--accent)" }}>
+              <IconTick size={18} strokeWidth={2.2} />
             </span>
-            <span className="text-[11px]" style={{ color: "var(--ink-2)" }}>
-              Last 28 days
+            <span className="text-[14px] font-semibold leading-[18px]">Add a check-in</span>
+          </Link>
+          <Link href="/plan?edit=1" className="card flex min-h-[64px] items-center gap-2.5 px-3.5 py-3">
+            <span className="shrink-0" style={{ color: "var(--accent)" }}>
+              <IconPencil size={18} strokeWidth={2} />
             </span>
-          </div>
-          <div className="card flex flex-col gap-0.5 p-3">
-            <span className="text-[20px] font-semibold leading-6 capitalize">
-              {phaseInfo ? phaseInfo.phase.replace("_", " ") : "General"}
-            </span>
-            <span className="text-[11px]" style={{ color: "var(--ink-2)" }}>
-              {phaseInfo ? "Phase" : "Fitness"}
-            </span>
-          </div>
+            <span className="text-[14px] font-semibold leading-[18px]">Update training plan</span>
+          </Link>
         </section>
       </main>
     </PullRefresh>
   );
-}
-
-function firstLine(text: string): string {
-  const line = text.split(/\n|\. /)[0];
-  return line.length < text.length ? `${line.replace(/\.$/, "")}.` : line;
 }

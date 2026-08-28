@@ -3,18 +3,18 @@
 import Link from "next/link";
 import { usePathname } from "next/navigation";
 import {
-  IconActivity,
   IconFood,
   IconPlan,
   IconSettings,
   IconToday,
 } from "@/components/icons";
 
+// V2 (docs/REDESIGN-V2.md): four tabs. Activity history is a secondary
+// screen reached from the Dashboard volume card, like Calendar.
 const TABS = [
-  { href: "/", label: "Today", Icon: IconToday },
+  { href: "/", label: "Dashboard", Icon: IconToday },
   { href: "/plan", label: "Plan", Icon: IconPlan },
-  { href: "/food", label: "Food", Icon: IconFood },
-  { href: "/activities", label: "Activity", Icon: IconActivity },
+  { href: "/food", label: "Nutrition", Icon: IconFood },
   { href: "/settings", label: "Settings", Icon: IconSettings },
 ] as const;
 

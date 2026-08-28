@@ -12,6 +12,7 @@ import { getRecentActivities, isRun, runKm, type ActivityRow } from "@/component
 import { SESSION_META } from "@/components/session";
 import type { SessionType } from "@/lib/planTypes";
 import { Banner } from "@/components/banner";
+import { IconChevronLeft } from "@/components/icons";
 import { SyncButton } from "./sync-button";
 import { LogSessionButton, ManualActivityActions } from "./log-session";
 
@@ -88,10 +89,22 @@ export default async function ActivityPage({
 
   return (
     <main className="flex flex-col gap-4 px-4 pt-3">
-      <header className="flex items-center justify-between pt-1">
+      {/* V2: secondary screen (no tab) reached from the Dashboard volume card —
+          back affordance like Calendar. */}
+      <header className="flex items-center gap-1 pt-1">
+        <Link
+          href="/"
+          aria-label="Back to Dashboard"
+          className="-ml-2 flex min-h-[44px] min-w-[44px] items-center justify-center"
+          style={{ color: "var(--accent)" }}
+        >
+          <IconChevronLeft size={22} strokeWidth={2.2} />
+        </Link>
         <h1 className="text-[22px] font-semibold leading-7">Activity</h1>
         {/* Manual logging (round 2, U6) works with or without Strava. */}
-        <LogSessionButton todayIso={today} />
+        <div className="ml-auto">
+          <LogSessionButton todayIso={today} />
+        </div>
       </header>
 
       {strava_error && (

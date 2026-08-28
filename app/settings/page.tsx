@@ -52,8 +52,8 @@ export default async function SettingsPage() {
         <h1 className="text-[22px] font-semibold leading-7">Settings</h1>
       </header>
 
-      {/* 1. Race goal */}
-      <section className="flex flex-col gap-3">
+      {/* 1. Race goal (id: deep-link target for the Dashboard quick action) */}
+      <section id="race" className="flex flex-col gap-3">
         <h2 className="overline" style={{ color: "var(--ink-2)" }}>
           Race goal
         </h2>
