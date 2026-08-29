@@ -130,8 +130,9 @@ export function ShoppingList({
                       aria-pressed={isTicked}
                       className="flex min-h-[48px] w-full items-center gap-3 px-4 py-2 text-left"
                     >
+                      {/* Waymark disc: ticked = a filled marker passed. */}
                       <span
-                        className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[6px] border"
+                        className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border-2"
                         style={
                           isTicked
                             ? { background: "var(--ok)", borderColor: "var(--ok)", color: "var(--surface)" }

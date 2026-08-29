@@ -1,4 +1,4 @@
-# Run Coach — design system (v2 overhaul)
+# Run Coach — design system (v3 overhaul)
 
 Companion to `REQUIREMENTS.md`. This document is the contract for the UI layer: visual
 language, tokens, component inventory and navigation. The implementation lives in
@@ -7,32 +7,39 @@ the route files.
 
 ---
 
-## 1. Visual direction: "Negative split"
+## 1. Visual direction: "Waymark"
 
 Run Coach is opened twice: for 20 seconds in a hotel corridor at 21:40, and for 10 calm
 minutes on a Sunday evening. Both moments happen at night, on a phone, by a tired person
-who wants an answer, not an experience. A negative split — running the second half faster —
-is also a pun on the inverted, dark-first palette. The design world is the **timing board
-and the split sheet**: stadium clocks, finish-line printouts, the split table on a race
-result.
+who wants an answer, not an experience. The third design direction leaves the stadium
+behind (v2's timing boards) and the training diary (v1's warm paper) and takes its world
+from **night navigation**: OS maps, route cards, waymarker discs on fingerposts, a
+head-torch on a dark hillside — the fell-running corner of the sport, and the owner's
+Lake District weekends.
 
-- **Dark-first: a floodlit track after hours.** The dark theme is the primary design
-  target. Blue-black ground (not neutral near-black), chalk-white ink, slate card
-  surfaces. Light mode is a genuine daylight translation — cool paper, not warm cream.
-- **The split board is the signature.** Every figure in the app — paces, km, minutes,
-  dates in tables, the PIN pad, chart labels, the hero session title — is set in a
-  timing-board monospace (Azeret Mono). Data rows read like race splits: label left,
-  mono figure right, hairline rules. Everything around the figures stays quiet.
-- **One accent: finish-tape pink.** `--accent` is fluorescent finish-line tape. It marks
-  primary actions, the active tab's lane indicator and the today marker — nothing else.
-  The `race` session colour deliberately shares the accent hue: race day is the point of
-  the whole app. Warnings are scoreboard amber, like an amber stadium board message.
-- **Structure encodes state.** Today is a 3px accent lane bar on the row's left edge, not
-  a tinted fill. The hero card carries a 3px "start line" rule in the session's colour.
-  Chips are rectangular timing tags (mono, uppercase, hairline border), not pills.
-- **Colour = session type, always.** Each of the eight session types owns a fixed hue used
-  identically in badges, table rows and the volume chart. Badges always pair colour with a
-  text label (colour-blind safe). No gradients, no shadows, no illustration.
+- **Dark-first: a forest at night.** The dark theme is the primary design target.
+  Green-black ground (a pine wood after dark, not a neutral or blue black), torch-lit
+  map-paper ink, moss-tinted card surfaces. Light mode is the same map unfolded in
+  daylight: pale sage sheet, never warm cream.
+- **The route line is the signature.** The Plan week renders as a route card: a dashed
+  footpath line (the OS map footpath mark) threading round waymark nodes — one disc per
+  day in the session's colour, today ringed in heather. The motif echoes small
+  everywhere: every chip carries a waymark dot, shopping ticks and PIN dots are discs,
+  the active tab gets a disc.
+- **One accent: heather.** `--accent` is moorland heather violet — the flower against
+  dark green — marking primary actions, the active tab's waymark, the today ring and
+  links, nothing else. The `race` session colour deliberately shares the accent hue:
+  race day is the point of the whole app. Warnings are gorse yellow; success is bracken
+  green.
+- **Structure encodes state.** Dashed lines appear only where they mean "path": the
+  route line through the week, and the "why" aside under a session (a 2px dashed rule
+  in the session's colour). Today is an accent ring on its node, not a tinted fill.
+  Solid hairlines remain the quiet card grammar.
+- **Colour = session type, always.** Each of the eight session types owns a fixed hue
+  used identically in badges, route nodes and the volume chart. Badges always pair
+  colour with a text label (colour-blind safe). No gradients (the dashed route line's
+  repeating-gradient dashes are the one, non-colour exception), no shadows beyond the
+  node rings, no illustration.
 
 ## 2. Colour system
 
@@ -44,72 +51,84 @@ The variable names are stable API — components never hard-code hex values.
 
 | Token          | Light                    | Dark                     | Use |
 |----------------|--------------------------|--------------------------|-----|
-| `--bg`         | `#EEF1F6` cool paper     | `#0C111B` track night    | page background |
-| `--surface`    | `#FFFFFF`                | `#141A26` slate lane     | cards |
-| `--raised`     | `#E2E7EF`                | `#1D2534`                | chips, secondary surfaces, keypad keys |
-| `--ink`        | `#17202E`                | `#F0F3F8` chalk          | primary text |
-| `--ink-2`      | `#515D70`                | `#96A0B5`                | secondary text |
-| `--ink-3`      | `#8792A3`                | `#64708A`                | tertiary/disabled text |
-| `--line`       | `rgba(23,32,46,.12)`     | `rgba(240,243,248,.09)`  | hairline borders |
-| `--accent`     | `#D11D62`                | `#FF4F87` finish tape    | primary buttons, active tab, today marker, links |
-| `--on-accent`  | `#FFFFFF`                | `#180510`                | text on accent |
-| `--accent-soft`| `rgba(209,29,98,.09)`    | `rgba(255,79,135,.13)`   | accent-tinted fills |
-| `--ok`         | `#178A4C`                | `#45D483`                | success, completed ticks |
-| `--warn`       | `#96660A`                | `#F5B84D` scoreboard amber | stale/warning banners |
-| `--danger`     | `#C33B3B`                | `#FF7676`                | errors, destructive actions |
+| `--bg`         | `#E8EBE1` map sheet      | `#0E1411` forest night   | page background |
+| `--surface`    | `#FDFDF9` paper          | `#171E1A` pine           | cards |
+| `--raised`     | `#DBE0D2`                | `#222B25`                | chips, secondary surfaces, keypad keys |
+| `--ink`        | `#1B221D`                | `#EDF2EC` torch paper    | primary text |
+| `--ink-2`      | `#4F5A52`                | `#A2AFA4`                | secondary text |
+| `--ink-3`      | `#7F8A81`                | `#6C786F`                | tertiary/disabled text |
+| `--line`       | `rgba(27,34,29,.13)`     | `rgba(237,242,236,.10)`  | hairline borders, route line |
+| `--accent`     | `#6743C8`                | `#A88BF7` heather        | primary buttons, active tab, today ring, links |
+| `--on-accent`  | `#FFFFFF`                | `#17102A`                | text on accent |
+| `--accent-soft`| `rgba(103,67,200,.10)`   | `rgba(168,139,247,.14)`  | accent-tinted fills |
+| `--ok`         | `#1C7F4B` bracken        | `#4CCE86`                | success, completed ticks |
+| `--warn`       | `#8A650F` gorse          | `#E8B455`                | stale/warning banners |
+| `--danger`     | `#BC3F33` rowan          | `#F87E70`                | errors, destructive actions |
 
 ### Session-type colours (fixed across the app)
 
-Each has a strong tone (`--s-*`) for text/icons and a soft tone (`--s-*-soft`) for fills.
-The accent moved from orange to pink in this overhaul, so `race` moved with it (the
-"race shares the accent hue" rule is deliberate and kept).
+Each has a strong tone (`--s-*`) for text/icons/nodes and a soft tone (`--s-*-soft`) for
+fills. The accent moved from finish-tape pink to heather violet in this overhaul, so
+`race` moved with it (the "race shares the accent hue" rule is deliberate and kept);
+`cross` takes orchid pink in exchange — the eight hue families stay the same
+colour-blind-distinguishable set as v2, with pink and violet swapped.
 
 | Session     | Light strong | Dark strong | Abbrev (tables) |
 |-------------|--------------|-------------|-----------------|
-| `rest`      | `#66717F`    | `#8C97A8`   | Rest |
-| `easy`      | `#1F8A4D`    | `#4FD07F`   | Easy |
-| `tempo`     | `#93720A`    | `#FFD24A`   | Tmp |
-| `intervals` | `#CE3B3B`    | `#FF6E6E`   | Int |
-| `long`      | `#1D6FC2`    | `#57ABFF`   | Long |
-| `cross`     | `#6A48D8`    | `#B08CFF`   | XT |
-| `strength`  | `#0E8578`    | `#3ED3C4`   | Str |
-| `race`      | `#D11D62`    | `#FF4F87`   | Race |
+| `rest`      | `#68746C`    | `#93A096`   | Rest |
+| `easy`      | `#1E8A4E`    | `#4FC97B`   | Easy |
+| `tempo`     | `#8F6E0B`    | `#E7C64B`   | Tmp |
+| `intervals` | `#C24237`    | `#F87E70`   | Int |
+| `long`      | `#1D6FC2`    | `#5FB0F9`   | Long |
+| `cross`     | `#B0338C`    | `#E88BD0`   | XT |
+| `strength`  | `#0E8578`    | `#3FCFBD`   | Str |
+| `race`      | `#6743C8`    | `#A88BF7`   | Race |
 
 Badges are always colour + text label, never colour alone (colour-blind safe).
 
 ## 3. Typography
 
-Two faces, self-hosted at build time via `next/font/google` (wired in `app/layout.tsx`,
-exposed as `--font-body` and `--font-digits` in `app/globals.css`):
+One signage superfamily plus a utility mono, self-hosted at build time via
+`next/font/google` (wired in `app/layout.tsx`, exposed as `--font-body`,
+`--font-display` and `--font-digits` in `app/globals.css`):
 
-- **Hanken Grotesk** — body and UI copy. Warm, highly legible on a phone at night.
-- **Azeret Mono** (500/600/700) — the timing-board face. Carries every figure in the app
-  plus display titles and board labels. It is content, not decoration: the mono appears
-  wherever a number does the talking.
+- **Barlow** (400/500/600/700) — body and UI copy. A low-contrast grotesque drawn from
+  public signage lettering; warm and legible on a phone at night.
+- **Barlow Condensed** (500/600/700) — the fingerpost face. Screen titles, hero session
+  titles, big distances ("42 KM RUN" set like "KESWICK 4½"), overlines, chips, tab
+  labels and buttons. Same superfamily as the body, so display and prose read as one
+  system of signs.
+- **IBM Plex Mono** (400/500/600) — route-card figures only: inline paces, km, dates in
+  tables, chart labels, quantity columns. Demoted from v2's everywhere-display role to
+  a quiet utility voice; the mono never sets a title.
 
 Roles (utility classes in `app/globals.css`):
 
-- **`.display`** — mono 600, −0.035em: hero session title (24/31), screen-date header
-  (20, uppercase), expanded plan-row titles (16/22).
-- **Title 22/28 bold (body face)** — screen titles.
+- **`.display`** — condensed 600, +0.005em: screen titles (26/32), hero session title
+  (28/32), fingerpost date header (24, uppercase, +0.04em), big stat figures (32/21),
+  expanded plan-row titles (19/23), PIN keys.
 - **Headline 17/24 semibold (body face)** — card titles, recipe names.
 - **Body 15/22 regular** — detail text, instructions.
 - **Footnote 13/18 regular** — metadata, timestamps, banner copy.
-- **`.overline`** — mono 10.5/600, uppercase, +0.09em: section labels, column heads,
-  stat captions, tab labels.
-- **`.tabular`** — mono with `tabular-nums`, −0.02em: every inline figure (paces, km,
-  minutes, dates in tables, PIN keys, chart labels, quantity columns).
+- **`.overline`** — condensed 12/600, uppercase, +0.09em: section labels, column heads,
+  stat captions.
+- **`.tabular`** — mono with `tabular-nums`, −0.01em: inline figures (paces, km,
+  minutes, dates in tables, chart labels, quantity columns).
+- Buttons — condensed 16/600, +0.02em, sentence case (uppercase is reserved for
+  overlines, chips, tab labels and the date header).
 
-Headings carry −0.015em tracking globally.
+Headings carry −0.01em tracking globally.
 
 ## 4. Spacing, radius, elevation
 
 - 4 px base grid. Screen padding 16 px; card padding 16 px; section gap 24 px; card gap 12 px.
-- Radius: cards 12 px; inputs 10 px; buttons 8 px; chips/timing tags 5 px; keypad keys and
-  shopping ticks are rounded squares. Pills are retired.
-- Elevation: none. Separation is surface tone + 1 px `--line` hairlines. The only thick
-  rules are semantic: the hero start line (3 px, session colour), the today lane bar
-  (3 px, accent), the active-tab lane indicator (2 px, accent).
+- Radius: cards 14 px; sheets 16 px; inputs and buttons 10 px; chips fully round
+  (waymark tags); keypad keys, PIN dots, plan nodes and shopping ticks are discs.
+  v2's rectangular timing tags are retired.
+- Elevation: none. Separation is surface tone + 1 px `--line` hairlines. The only other
+  strokes are semantic: the dashed route line (`.route-line`), the dashed "why"
+  footpath aside (`.path-aside`, 2 px, session colour), and the today node's 2 px
+  accent ring.
 - Tap targets ≥ 44 × 44 px everywhere (tab items, keypad, checkboxes, steppers, chips).
 - Keyboard focus: global `:focus-visible` ring in `--accent`.
 - Motion: skeleton pulse, spinner, PIN shake only; `prefers-reduced-motion` kills the
@@ -124,42 +143,44 @@ Headings carry −0.015em tracking globally.
 
 | Component | File | Notes |
 |---|---|---|
-| Tab bar | `components/tab-bar.tsx` | V2: 4 tabs (Dashboard · Plan · Nutrition · Settings), blur surface, active = accent + 2 px lane indicator, mono uppercase labels; tapping active tab scrolls to top; hidden on `/pin`. |
-| Card | utility classes (`.card`) | Surface, radius 12, hairline border. |
-| Session badge | `components/session.tsx` | Timing tag: soft fill + strong text + hairline border, mono uppercase. Fixed colour per type. |
+| Tab bar | `components/tab-bar.tsx` | V2: 4 tabs (Dashboard · Plan · Nutrition · Settings), blur surface, active = accent + waymark disc above the icon, condensed uppercase labels; tapping active tab scrolls to top; hidden on `/pin`. |
+| Card | utility classes (`.card`) | Surface, radius 14, hairline border. |
+| Session badge | `components/session.tsx` | Waymark tag: soft fill + strong text + leading colour disc, condensed uppercase. Fixed colour per type. |
 | Meal-type badge | `components/session.tsx` | v1 legacy rendering only (Home / Eating out / Quick) — the v2 meal model has no meal types. |
-| Context chip | `.chip` utility | Header chips: "Travel day", "Race week", "6 weeks to …". |
+| Context chip | `.chip` utility | Header chips: "Travel day", "Race week", "6 weeks to …". Every chip carries the waymark dot via `.chip::before`. |
 | Banner | `components/banner.tsx` | Variants: warn (stale/disconnected), error, info, offline; `quiet` prop (V2 Dashboard) drops the fill for tinted text + hairline so banners sit below the hero visually. |
 | Offline banner | `components/offline-banner.tsx` | Client; listens to online/offline events. |
 | Dinner card (Dashboard) | rendered in `app/page.tsx` | V2: shown ONLY when today is an away day with a planned prep-ahead meal; links to Nutrition. Home days show no meal card. |
-| Volume lookback card | rendered in `app/page.tsx` | V2: 7-day running km (run-only, U1) + planned-sessions-done summary; opens `/activities` (the relocated Activity history). |
+| Volume lookback card | rendered in `app/page.tsx` | V2: 7-day running km (run-only, U1) in fingerpost lettering + planned-sessions-done summary; opens `/activities`. |
 | Quick actions grid | rendered in `app/page.tsx` | V2: 2x2 — Log a session (sheet), Add a goal race (`/settings#race`), Add a check-in (`/checkin`), Update training plan (`/plan?edit=1`). |
-| Plan table | `app/plan/plan-table.tsx` | V2: Date \| Volume \| Detail rows, today first then forward (past days dimmed at the end); tap to expand the full session card. Volume = "15 km" / "45 min" / "Gym" / "Rest". |
-| Plan edit mode | `app/plan/plan-table.tsx` | V2: per-row session-type quick-pick + free-text (`addPendingChange`), whole-week instruction, inline check-in note (`savePendingCheckin`), pending list with per-item Remove and Clear all, ONE "Apply changes — regenerate" → POST `{apply_pending: true}` (~30 s state, 429/500 surfaced). Replaces the round-2 Suggest-changes card. Deep-linked from the Dashboard via `?edit=1`. |
+| Plan route card | `app/plan/plan-table.tsx` | V3 signature: node \| date \| detail \| volume rows threaded by the dashed route line; nodes are session-coloured discs, today ringed in accent; today first then forward (past days dimmed at the end); tap to expand the full session card. Volume = "15 km" / "45 min" / "Gym" / "Rest" in the utility mono. |
+| Plan edit mode | `app/plan/plan-table.tsx` | V2 behaviour unchanged: per-row session-type quick-pick + free-text (`addPendingChange`), whole-week instruction, inline check-in note (`savePendingCheckin`), pending list with per-item Remove and Clear all, ONE "Apply changes — regenerate" → POST `{apply_pending: true}` (~30 s state, 429/500 surfaced). Deep-linked from the Dashboard via `?edit=1`. |
 | Away meal card | `app/food/page.tsx` | V2: `<details>` row — date + recipe + prep time, expanding to ingredients (item \| quantity) and method. |
-| Shopping list | `app/food/shopping-list.tsx` | Client; grouped by category with the sketch's Item \| Volume columns (`quantity_note` right-aligned); localStorage ticks keyed by week + generated_at; checked sink + strike; "Reset ticks". |
+| Shopping list | `app/food/shopping-list.tsx` | Client; grouped by category with Item \| Volume columns (`quantity_note` right-aligned); localStorage ticks keyed by week + generated_at; ticks are waymark discs; checked sink + strike; "Reset ticks". |
 | Generate/regenerate | `components/generate-plan.tsx` | Confirm sheet when replacing; in-flight spinner label "Planning your week… (about 30 seconds)"; error + retry. |
 | Sync button(s) | `app/settings/connections.tsx`, secondary-screen sync buttons | Combined sync = both providers, independent per-provider results. |
 | Tag input | `app/settings/food-form.tsx` | Type + add, tap to remove; writes hidden comma-joined field (keeps server-action field names). |
 | Stepper | `app/settings/food-form.tsx` | Household size 1–6. |
-| PIN keypad | `app/pin/pin-pad.tsx` | 4 dots, 0–9 + delete, auto-submit on 4th digit, shake on 401, countdown lockout on 429. |
+| PIN keypad | `app/pin/pin-pad.tsx` | 4 waymark-disc dots, round keypad posts 0–9 + delete, auto-submit on 4th digit, shake on 401, countdown lockout on 429. |
 | Check-in forms | `app/checkin/checkin-forms.tsx` | Two textareas, one Save each: weekly note (keyed to the week containing today) and persistent injuries with "Clear — all healed". Fix round 1, U4. |
 | Injury history list | `app/checkin/injury-history.tsx` | Round 2, U5. Visually secondary list under current injuries: description + period rows, inline add/edit forms, in-place delete confirm. |
-| Log-session sheet | `app/activities/log-session.tsx` | Round 2, U6. Bottom sheet: date, session-type quick-pick chips + free-text "Other", duration, distance (run-ish types only), note. Entry points: Dashboard quick action ("tile" appearance), Activity header (and empty state), Dashboard hero when today's session is unticked (pre-selects the type). `ManualActivityActions` adds Edit/Delete to manually logged rows only; manual rows carry a "Logged manually" label and never show pace. |
+| Log-session sheet | `app/activities/log-session.tsx` | Round 2, U6. Bottom sheet (radius 16): date, session-type quick-pick chips + free-text "Other", duration, distance (run-ish types only), note. Entry points: Dashboard quick action ("tile" appearance), Activity header (and empty state), Dashboard hero when today's session is unticked (pre-selects the type). `ManualActivityActions` adds Edit/Delete to manually logged rows only; manual rows carry a "Logged manually" label and never show pace. |
 | Skeletons | `loading.tsx` per route + `.skeleton` utility | Reserve final layout space; visible < 500 ms. |
 | Empty states | per screen | Icon-free, one sentence + one action, per REQUIREMENTS §3 / REDESIGN-V2. |
 
-Retired in V2: the 7-day week strip and 3-tile snapshot row (Dashboard now carries the
-volume card + quick actions), the Today check-in row (quick action instead), the Food
-Meals ⇄ Shopping segmented control (one scrolling Nutrition screen), and the round-2
-Suggest-changes card (merged into Plan edit mode).
+Retired in V3 (visual only — behaviour unchanged): the timing-board mono display voice,
+rectangular timing tags, the hero start-line rule, the today lane bar and the active-tab
+lane indicator (replaced by the route line, waymark tags/dots, the footpath aside and
+the today node ring). Retired in V2 and still gone: the 7-day week strip, the 3-tile
+snapshot row, the Today check-in row, the Food Meals ⇄ Shopping segmented control, and
+the round-2 Suggest-changes card.
 
 ## 6. Navigation map (V2 — docs/REDESIGN-V2.md)
 
 Bottom tab bar (always visible except on `/pin`):
 
 1. **Dashboard** — `/` (PWA start URL)
-2. **Plan** — `/plan` (table + edit mode; `?edit=1` opens edit mode directly)
+2. **Plan** — `/plan` (route card + edit mode; `?edit=1` opens edit mode directly)
 3. **Nutrition** — `/food` (away-day recipes, then the shopping list)
 4. **Settings** — `/settings`
 
@@ -363,7 +384,7 @@ Contract for the v2 screens (docs/REDESIGN-V2.md). Same style as §7–§8c.
   `parseLegacyMeals` renderers (do not break old rows). `[]` means a valid v2
   week with no away days → "No away days coming up — nothing to prep".
 - Shopping list: unchanged shape `{ item, quantity_note, category }` — render
-  `quantity_note` as the sketch's "Volume" column. Generation guarantees the
+  `quantity_note` as the "Volume" column. Generation guarantees the
   list is exactly the away recipes' ingredients (server-side scrub).
 
 ### Pending changes + batch apply (Plan screen edit mode)

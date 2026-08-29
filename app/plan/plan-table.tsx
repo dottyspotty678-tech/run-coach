@@ -243,16 +243,10 @@ export function PlanTable({
         </button>
       </div>
 
-      {/* The table */}
+      {/* The route card: the week as a footpath — a dashed route line
+          threading round waymark nodes, one per day, today ringed in
+          heather. Colour lives in the node and the badge. */}
       <div className="card overflow-hidden">
-        <div
-          className="grid grid-cols-[92px_64px_1fr] gap-2 border-b px-4 py-2"
-          style={{ borderColor: "var(--line)" }}
-        >
-          <span className="overline" style={{ color: "var(--ink-3)" }}>Date</span>
-          <span className="overline" style={{ color: "var(--ink-3)" }}>Volume</span>
-          <span className="overline" style={{ color: "var(--ink-3)" }}>Detail</span>
-        </div>
         <ul className="divide-y" style={{ borderColor: "var(--line)" }}>
           {rows.map((row) => {
             const isOpen = expanded === row.date;
@@ -264,13 +258,28 @@ export function PlanTable({
                   type="button"
                   onClick={() => setExpanded(isOpen ? null : row.date)}
                   aria-expanded={isOpen}
-                  className="grid w-full grid-cols-[92px_64px_1fr] items-center gap-2 px-4 py-3 text-left"
+                  className="relative grid w-full grid-cols-[24px_76px_1fr_auto] items-center gap-2 py-3 pl-4 pr-4 text-left"
                   style={{
-                    // Today gets a lane bar on the left edge, not a tinted fill.
-                    boxShadow: row.isToday ? "inset 3px 0 0 var(--accent)" : undefined,
                     opacity: row.isPast && !row.isToday ? 0.55 : 1,
                   }}
                 >
+                  {/* Route line segment — joins across rows into one path. */}
+                  <span
+                    aria-hidden="true"
+                    className="route-line absolute bottom-0 left-[27px] top-0"
+                  />
+                  {/* Waymark node in the session's colour. */}
+                  <span className="relative flex items-center justify-center">
+                    <span
+                      className="h-3 w-3 rounded-full"
+                      style={{
+                        background: meta.color,
+                        boxShadow: row.isToday
+                          ? "0 0 0 2px var(--surface), 0 0 0 4px var(--accent)"
+                          : "0 0 0 2px var(--surface)",
+                      }}
+                    />
+                  </span>
                   <span className="min-w-0">
                     <span
                       className={`block text-[13px] leading-4 ${row.isToday ? "overline" : "font-semibold"}`}
@@ -281,12 +290,6 @@ export function PlanTable({
                     <span className="tabular block text-[10.5px]" style={{ color: "var(--ink-3)" }}>
                       {row.dateLabel}
                     </span>
-                  </span>
-                  <span
-                    className="text-[13px] font-semibold tabular leading-4"
-                    style={{ color: meta.color }}
-                  >
-                    {row.volume}
                   </span>
                   <span className="flex min-w-0 items-center gap-1.5">
                     <span className="truncate text-[13px]" style={{ color: "var(--ink-2)" }}>
@@ -311,6 +314,12 @@ export function PlanTable({
                       </span>
                     )}
                   </span>
+                  <span
+                    className="tabular text-[12.5px] font-medium leading-4"
+                    style={{ color: "var(--ink-2)" }}
+                  >
+                    {row.volume}
+                  </span>
                 </button>
 
                 {/* Expanded: the full session card content */}
@@ -322,18 +331,18 @@ export function PlanTable({
                     <div className="flex items-center justify-between gap-2">
                       <SessionBadge type={row.session_type} />
                       {row.duration_min > 0 && (
-                        <span className="text-[13px] font-semibold tabular" style={{ color: "var(--ink-2)" }}>
-                          {row.duration_min} min
+                        <span className="display text-[15px]" style={{ color: "var(--ink)" }}>
+                          {row.duration_min} <span style={{ color: "var(--ink-2)" }}>min</span>
                         </span>
                       )}
                     </div>
-                    <h3 className="display text-[16px] leading-[22px]">{row.title}</h3>
+                    <h3 className="display text-[19px] leading-[23px]">{row.title}</h3>
                     <p className="text-[14px] leading-[21px]">{row.detail}</p>
                     <p
-                      className="border-l-2 pl-2.5 text-[12px] leading-[17px]"
-                      style={{ color: "var(--ink-2)", borderColor: meta.color }}
+                      className="path-aside text-[12px] leading-[17px]"
+                      style={{ color: meta.color }}
                     >
-                      {row.why}
+                      <span style={{ color: "var(--ink-2)" }}>{row.why}</span>
                     </p>
                     {editMode &&
                       (changeFor === row.date ? (

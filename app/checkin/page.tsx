@@ -49,7 +49,7 @@ export default async function CheckinPage() {
         >
           <IconChevronLeft size={22} strokeWidth={2.2} />
         </Link>
-        <h1 className="text-[22px] font-semibold leading-7">Check-in</h1>
+        <h1 className="display text-[26px] leading-8">Check-in</h1>
       </header>
 
       {/* How did this week feel? */}

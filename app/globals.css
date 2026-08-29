@@ -1,93 +1,98 @@
 @import "tailwindcss";
 
 /* ------------------------------------------------------------------ */
-/* Design tokens — see docs/DESIGN.md ("Negative split")               */
+/* Design tokens — see docs/DESIGN.md ("Waymark")                      */
 /*                                                                    */
-/* Dark-first: a floodlit track after hours. Blue-black ground, chalk */
-/* ink, finish-tape pink accent, scoreboard-amber warnings. Every     */
-/* figure in the app is a timing-board digit (Azeret Mono).           */
+/* Night navigation: forest-night green ground, map-paper ink,        */
+/* heather accent, waymark discs and dashed footpath lines. Display   */
+/* type is fingerpost condensed (Barlow Condensed); figures sit in a  */
+/* quiet route-card mono (IBM Plex Mono).                             */
 /* ------------------------------------------------------------------ */
 
 :root {
   /* Type roles (faces wired via next/font in app/layout.tsx). */
   --font-body: var(--font-body-app), -apple-system, BlinkMacSystemFont,
     "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-display: var(--font-display-app), "Arial Narrow",
+    "Helvetica Neue Condensed", var(--font-body), sans-serif;
   --font-digits: var(--font-digits-app), ui-monospace, "SF Mono",
     SFMono-Regular, Menlo, Consolas, monospace;
 
-  /* Light — "cool paper": an overcast morning, not warm cream. */
-  --bg: #eef1f6;
-  --surface: #ffffff;
-  --raised: #e2e7ef;
-  --ink: #17202e;
-  --ink-2: #515d70;
-  --ink-3: #8792a3;
-  --line: rgba(23, 32, 46, 0.12);
-  --accent: #d11d62;
+  /* Light — "map sheet": pale sage paper, like an OS sheet in daylight. */
+  --bg: #e8ebe1;
+  --surface: #fdfdf9;
+  --raised: #dbe0d2;
+  --ink: #1b221d;
+  --ink-2: #4f5a52;
+  --ink-3: #7f8a81;
+  --line: rgba(27, 34, 29, 0.13);
+  --accent: #6743c8;
   --on-accent: #ffffff;
-  --accent-soft: rgba(209, 29, 98, 0.09);
-  --ok: #178a4c;
-  --ok-soft: rgba(23, 138, 76, 0.11);
-  --warn: #96660a;
-  --warn-soft: rgba(224, 158, 34, 0.14);
-  --danger: #c33b3b;
-  --danger-soft: rgba(195, 59, 59, 0.1);
+  --accent-soft: rgba(103, 67, 200, 0.1);
+  --ok: #1c7f4b;
+  --ok-soft: rgba(28, 127, 75, 0.11);
+  --warn: #8a650f;
+  --warn-soft: rgba(216, 168, 55, 0.16);
+  --danger: #bc3f33;
+  --danger-soft: rgba(188, 63, 51, 0.1);
 
   /* Session-type colours (fixed across the app; badge = colour + label) */
-  --s-rest: #66717f;
-  --s-rest-soft: rgba(102, 113, 127, 0.12);
-  --s-easy: #1f8a4d;
-  --s-easy-soft: rgba(31, 138, 77, 0.11);
-  --s-tempo: #93720a;
-  --s-tempo-soft: rgba(197, 158, 22, 0.15);
-  --s-intervals: #ce3b3b;
-  --s-intervals-soft: rgba(206, 59, 59, 0.1);
+  --s-rest: #68746c;
+  --s-rest-soft: rgba(104, 116, 108, 0.13);
+  --s-easy: #1e8a4e;
+  --s-easy-soft: rgba(30, 138, 78, 0.11);
+  --s-tempo: #8f6e0b;
+  --s-tempo-soft: rgba(191, 154, 25, 0.16);
+  --s-intervals: #c24237;
+  --s-intervals-soft: rgba(194, 66, 55, 0.1);
   --s-long: #1d6fc2;
   --s-long-soft: rgba(29, 111, 194, 0.1);
-  --s-cross: #6a48d8;
-  --s-cross-soft: rgba(106, 72, 216, 0.1);
+  --s-cross: #b0338c;
+  --s-cross-soft: rgba(176, 51, 140, 0.1);
   --s-strength: #0e8578;
   --s-strength-soft: rgba(14, 133, 120, 0.11);
-  --s-race: #d11d62;
-  --s-race-soft: rgba(209, 29, 98, 0.1);
+  --s-race: #6743c8;
+  --s-race-soft: rgba(103, 67, 200, 0.1);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    /* Dark — "track night": the primary design target. */
-    --bg: #0c111b;
-    --surface: #141a26;
-    --raised: #1d2534;
-    --ink: #f0f3f8;
-    --ink-2: #96a0b5;
-    --ink-3: #64708a;
-    --line: rgba(240, 243, 248, 0.09);
-    --accent: #ff4f87;
-    --on-accent: #180510;
-    --accent-soft: rgba(255, 79, 135, 0.13);
-    --ok: #45d483;
-    --ok-soft: rgba(69, 212, 131, 0.13);
-    --warn: #f5b84d;
-    --warn-soft: rgba(245, 184, 77, 0.13);
-    --danger: #ff7676;
-    --danger-soft: rgba(255, 118, 118, 0.12);
+    /* Dark — "forest night": the primary design target. Green-black
+       ground (a pine wood after dark), torch-lit paper ink, heather
+       accent — moorland colour, not stadium colour. */
+    --bg: #0e1411;
+    --surface: #171e1a;
+    --raised: #222b25;
+    --ink: #edf2ec;
+    --ink-2: #a2afa4;
+    --ink-3: #6c786f;
+    --line: rgba(237, 242, 236, 0.1);
+    --accent: #a88bf7;
+    --on-accent: #17102a;
+    --accent-soft: rgba(168, 139, 247, 0.14);
+    --ok: #4cce86;
+    --ok-soft: rgba(76, 206, 134, 0.13);
+    --warn: #e8b455;
+    --warn-soft: rgba(232, 180, 85, 0.13);
+    --danger: #f87e70;
+    --danger-soft: rgba(248, 126, 112, 0.12);
 
-    --s-rest: #8c97a8;
-    --s-rest-soft: rgba(140, 151, 168, 0.15);
-    --s-easy: #4fd07f;
-    --s-easy-soft: rgba(79, 208, 127, 0.13);
-    --s-tempo: #ffd24a;
-    --s-tempo-soft: rgba(255, 210, 74, 0.12);
-    --s-intervals: #ff6e6e;
-    --s-intervals-soft: rgba(255, 110, 110, 0.12);
-    --s-long: #57abff;
-    --s-long-soft: rgba(87, 171, 255, 0.13);
-    --s-cross: #b08cff;
-    --s-cross-soft: rgba(176, 140, 255, 0.13);
-    --s-strength: #3ed3c4;
-    --s-strength-soft: rgba(62, 211, 196, 0.12);
-    --s-race: #ff4f87;
-    --s-race-soft: rgba(255, 79, 135, 0.13);
+    --s-rest: #93a096;
+    --s-rest-soft: rgba(147, 160, 150, 0.16);
+    --s-easy: #4fc97b;
+    --s-easy-soft: rgba(79, 201, 123, 0.13);
+    --s-tempo: #e7c64b;
+    --s-tempo-soft: rgba(231, 198, 75, 0.12);
+    --s-intervals: #f87e70;
+    --s-intervals-soft: rgba(248, 126, 112, 0.12);
+    --s-long: #5fb0f9;
+    --s-long-soft: rgba(95, 176, 249, 0.13);
+    --s-cross: #e88bd0;
+    --s-cross-soft: rgba(232, 139, 208, 0.13);
+    --s-strength: #3fcfbd;
+    --s-strength-soft: rgba(63, 207, 189, 0.12);
+    --s-race: #a88bf7;
+    --s-race-soft: rgba(168, 139, 247, 0.14);
   }
 }
 
@@ -145,7 +150,7 @@ body {
 h1,
 h2,
 h3 {
-  letter-spacing: -0.015em;
+  letter-spacing: -0.01em;
 }
 
 ::selection {
@@ -165,47 +170,75 @@ h3 {
 .card {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 12px;
+  border-radius: 14px;
 }
 
-/* Timing tag: rectangular chip, mono uppercase — a split-sheet label,
-   not a pill. Colour always pairs with a text label. */
+/* Waymark tag: a round tag with a disc of colour before the label —
+   the arrow disc screwed to a fingerpost. Colour always pairs with a
+   text label (colour-blind safe). */
 .chip {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  border-radius: 5px;
-  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
-  padding: 2px 7px;
-  font-family: var(--font-digits);
-  font-size: 10.5px;
+  gap: 6px;
+  border-radius: 999px;
+  padding: 3px 10px 3px 8px;
+  font-family: var(--font-display);
+  font-size: 12px;
   font-weight: 600;
-  letter-spacing: 0.07em;
+  letter-spacing: 0.05em;
   text-transform: uppercase;
-  line-height: 1.5;
+  line-height: 1.4;
+}
+.chip::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: currentColor;
 }
 
-/* Board label: section headers and column heads, set like a scoreboard row. */
+/* Fingerpost label: section headers and column heads. */
 .overline {
-  font-family: var(--font-digits);
-  font-size: 10.5px;
+  font-family: var(--font-display);
+  font-size: 12px;
   font-weight: 600;
   letter-spacing: 0.09em;
   text-transform: uppercase;
 }
 
-/* The split board: every figure in the app is a timing-board digit. */
+/* Route-card figures: paces, km, dates in tables — a quiet utility
+   mono, never a display voice. */
 .tabular {
   font-family: var(--font-digits);
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.02em;
+  letter-spacing: -0.01em;
 }
 
-/* Display role: hero titles and big figures share the timing mono. */
+/* Display role: fingerpost lettering — tall condensed titles and big
+   distances ("KESWICK 4½"), set larger than the grotesk they replace. */
 .display {
-  font-family: var(--font-digits);
+  font-family: var(--font-display);
   font-weight: 600;
-  letter-spacing: -0.035em;
+  letter-spacing: 0.005em;
+}
+
+/* The footpath aside: a dashed rule in the session's colour — the OS
+   map footpath — reserved for path semantics, never decoration. */
+.path-aside {
+  border-left: 2px dashed currentColor;
+  padding-left: 12px;
+}
+
+/* The route line: a controlled dashed vertical path threading the
+   plan's waymark nodes (repeating gradient = even 4/5 dashes). */
+.route-line {
+  background-image: repeating-linear-gradient(
+    to bottom,
+    var(--line) 0 4px,
+    transparent 4px 9px
+  );
+  width: 2px;
 }
 
 .btn-primary {
@@ -214,12 +247,14 @@ h3 {
   justify-content: center;
   gap: 8px;
   min-height: 44px;
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 0 20px;
   background: var(--accent);
   color: var(--on-accent);
-  font-size: 15px;
-  font-weight: 650;
+  font-family: var(--font-display);
+  font-size: 16px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
 }
 .btn-primary:disabled {
   opacity: 0.55;
@@ -231,13 +266,15 @@ h3 {
   justify-content: center;
   gap: 8px;
   min-height: 44px;
-  border-radius: 8px;
+  border-radius: 10px;
   padding: 0 16px;
   background: var(--raised);
   border: 1px solid var(--line);
   color: var(--ink);
-  font-size: 15px;
+  font-family: var(--font-display);
+  font-size: 16px;
   font-weight: 600;
+  letter-spacing: 0.02em;
 }
 .btn-secondary:disabled {
   opacity: 0.55;
@@ -263,7 +300,7 @@ h3 {
 
 /* Skeletons reserve space; subtle pulse, no layout shift. */
 .skeleton {
-  border-radius: 12px;
+  border-radius: 14px;
   background: var(--raised);
   animation: skeleton-pulse 1.4s ease-in-out infinite;
 }

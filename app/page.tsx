@@ -160,8 +160,9 @@ export default async function DashboardPage() {
       <main className="flex flex-col gap-4 px-4 pt-3">
         {/* Header */}
         <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5 pt-1">
-          {/* The date is a figure — it belongs to the split board. */}
-          <h1 className="display text-[20px] uppercase leading-7">
+          {/* The date is set like a fingerpost blade — tall, condensed,
+              uppercase. */}
+          <h1 className="display text-[24px] uppercase leading-7 tracking-[0.04em]">
             {formatDayShort(today)}
           </h1>
           <div className="flex flex-wrap gap-1.5">
@@ -226,34 +227,28 @@ export default async function DashboardPage() {
             <GeneratePlanButton hasPlan={false} />
           </section>
         ) : todaySession ? (
-          /* The hero is the next split: a start-line rule in the session's
-             colour, then the session as a board entry. */
-          <section
-            className="card flex flex-col gap-2.5 p-5"
-            style={{
-              borderTop: `3px solid ${SESSION_META[todaySession.session_type].color}`,
-              borderTopLeftRadius: 0,
-              borderTopRightRadius: 0,
-            }}
-          >
+          /* The hero is tonight's waymark: the session badge as the disc on
+             the post, a fingerpost title, and the "why" as a dashed footpath
+             aside in the session's colour. */
+          <section className="card flex flex-col gap-2.5 p-5">
             <div className="flex items-center justify-between gap-2">
               <SessionBadge type={todaySession.session_type} />
               {todaySession.duration_min > 0 && (
-                <span className="tabular text-[15px] font-semibold" style={{ color: "var(--ink)" }}>
+                <span className="display text-[19px]" style={{ color: "var(--ink)" }}>
                   {todaySession.duration_min}
-                  <span className="text-[11px]" style={{ color: "var(--ink-2)" }}>
-                    {" "}MIN
+                  <span className="text-[13px]" style={{ color: "var(--ink-2)" }}>
+                    {" "}min
                   </span>
                 </span>
               )}
             </div>
-            <h2 className="display text-[24px] leading-[31px]">{todaySession.title}</h2>
+            <h2 className="display text-[28px] leading-[32px]">{todaySession.title}</h2>
             <p className="text-[15px] leading-[22px]">{todaySession.detail}</p>
             <p
-              className="border-l-2 pl-3 text-[13px] leading-[18px]"
-              style={{ color: "var(--ink-2)", borderColor: SESSION_META[todaySession.session_type].color }}
+              className="path-aside text-[13px] leading-[18px]"
+              style={{ color: SESSION_META[todaySession.session_type].color }}
             >
-              {todaySession.why}
+              <span style={{ color: "var(--ink-2)" }}>{todaySession.why}</span>
             </p>
             {/* U6: sessions that never reach Strava can be logged from here. */}
             {todaySession.session_type !== "rest" &&
@@ -314,9 +309,10 @@ export default async function DashboardPage() {
             <span className="overline block" style={{ color: "var(--ink-2)" }}>
               Training volume — last 7 days
             </span>
-            <span className="tabular mt-1 block text-[26px] font-semibold leading-8">
+            {/* Distance as fingerpost lettering — "KESWICK 4½". */}
+            <span className="display mt-1 block text-[32px] font-bold leading-9">
               {last7Km.toFixed(0)}
-              <span className="text-[12px] font-medium" style={{ color: "var(--ink-2)" }}>
+              <span className="text-[14px] font-semibold tracking-[0.06em]" style={{ color: "var(--ink-2)" }}>
                 {" "}KM RUN
               </span>
             </span>

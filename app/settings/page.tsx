@@ -49,7 +49,7 @@ export default async function SettingsPage() {
   return (
     <main className="flex flex-col gap-6 px-4 pt-3">
       <header className="pt-1">
-        <h1 className="text-[22px] font-semibold leading-7">Settings</h1>
+        <h1 className="display text-[26px] leading-8">Settings</h1>
       </header>
 
       {/* 1. Race goal (id: deep-link target for the Dashboard quick action) */}
@@ -77,7 +77,7 @@ export default async function SettingsPage() {
             className="card flex items-baseline gap-2 p-4"
             style={{ background: "var(--accent-soft)", borderColor: "transparent" }}
           >
-            <span className="text-[17px] font-semibold" style={{ color: "var(--accent)" }}>
+            <span className="display text-[20px]" style={{ color: "var(--accent)" }}>
               {PHASE_LABEL[phaseInfo.phase] ?? phaseInfo.phase}
             </span>
             <span className="text-[13px]" style={{ color: "var(--ink-2)" }}>
