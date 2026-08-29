@@ -60,7 +60,7 @@ export default async function CalendarPage({
         >
           <IconChevronLeft size={22} strokeWidth={2.2} />
         </Link>
-        <h1 className="text-[22px] font-semibold leading-7">Calendar</h1>
+        <h1 className="display text-[26px] leading-8">Calendar</h1>
         <div className="ml-auto">{connected && <CalendarSyncButton compact />}</div>
       </header>
 

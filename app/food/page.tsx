@@ -143,7 +143,7 @@ export default async function NutritionPage() {
     <main className="flex flex-col gap-4 px-4 pt-3">
       <ScrollToHash />
       <header className="pt-1">
-        <h1 className="text-[22px] font-semibold leading-7">Nutrition</h1>
+        <h1 className="display text-[26px] leading-8">Nutrition</h1>
       </header>
 
       {!plan ? (

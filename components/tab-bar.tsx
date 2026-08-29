@@ -53,19 +53,20 @@ export function TabBar() {
               className="relative flex min-h-[56px] flex-1 flex-col items-center justify-center gap-1"
               style={{ color: active ? "var(--accent)" : "var(--ink-3)" }}
             >
-              {/* Lane indicator: a 2px rule over the active tab. */}
+              {/* Waymark: a small disc above the active tab — the
+                  coloured marker on the fingerpost. */}
               <span
                 aria-hidden="true"
-                className="absolute inset-x-4 top-0 h-[2px] rounded-full"
+                className="absolute top-[3px] h-[5px] w-[5px] rounded-full"
                 style={{ background: active ? "var(--accent)" : "transparent" }}
               />
               <Icon size={22} strokeWidth={active ? 2.1 : 1.8} />
               <span
                 className="uppercase leading-3"
                 style={{
-                  fontFamily: "var(--font-digits)",
-                  fontSize: 9,
-                  letterSpacing: "0.08em",
+                  fontFamily: "var(--font-display)",
+                  fontSize: 11,
+                  letterSpacing: "0.09em",
                   fontWeight: active ? 700 : 500,
                 }}
               >

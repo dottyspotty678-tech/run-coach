@@ -118,7 +118,7 @@ export function GeneratePlanButton({ hasPlan, appearance = "primary" }: Props) {
             onClick={() => setConfirming(false)}
           />
           <div
-            className="relative mx-3 mb-3 w-full max-w-lg rounded-xl p-5 pb-safe"
+            className="relative mx-3 mb-3 w-full max-w-lg rounded-2xl p-5 pb-safe"
             style={{ background: "var(--surface)", border: "1px solid var(--line)" }}
           >
             <h2 className="text-[17px] font-semibold">Replace this week&apos;s plan?</h2>

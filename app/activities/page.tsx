@@ -100,7 +100,7 @@ export default async function ActivityPage({
         >
           <IconChevronLeft size={22} strokeWidth={2.2} />
         </Link>
-        <h1 className="text-[22px] font-semibold leading-7">Activity</h1>
+        <h1 className="display text-[26px] leading-8">Activity</h1>
         {/* Manual logging (round 2, U6) works with or without Strava. */}
         <div className="ml-auto">
           <LogSessionButton todayIso={today} />
@@ -134,7 +134,7 @@ export default async function ActivityPage({
               </h2>
               <div className="flex gap-4 text-right">
                 <span>
-                  <span className="block text-[17px] font-semibold tabular leading-5">
+                  <span className="display block text-[21px] leading-6">
                     {last7Km.toFixed(0)} km
                   </span>
                   <span className="overline block" style={{ color: "var(--ink-2)" }}>
@@ -142,7 +142,7 @@ export default async function ActivityPage({
                   </span>
                 </span>
                 <span>
-                  <span className="block text-[17px] font-semibold tabular leading-5">
+                  <span className="display block text-[21px] leading-6">
                     {last28Km.toFixed(0)} km
                   </span>
                   <span className="overline block" style={{ color: "var(--ink-2)" }}>
@@ -195,7 +195,7 @@ export default async function ActivityPage({
                       textAnchor="middle"
                       fontSize="8"
                       fill={isCurrent ? "var(--accent)" : "var(--ink-3)"}
-                      fontWeight={isCurrent ? 700 : 500}
+                      fontWeight={isCurrent ? 600 : 400}
                       style={{ fontFamily: "var(--font-digits)" }}
                     >
                       {formatDateShort(week)}

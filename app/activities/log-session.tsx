@@ -91,7 +91,7 @@ function SessionSheet({
           }
           onClose();
         }}
-        className="relative mx-3 mb-3 flex w-full max-w-lg flex-col gap-3 rounded-xl p-5 pb-safe"
+        className="relative mx-3 mb-3 flex w-full max-w-lg flex-col gap-3 rounded-2xl p-5 pb-safe"
         style={{ background: "var(--surface)", border: "1px solid var(--line)" }}
       >
         <h2 className="text-[17px] font-semibold">

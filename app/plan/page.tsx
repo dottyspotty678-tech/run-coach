@@ -120,7 +120,7 @@ export default async function PlanPage({
       {/* Header */}
       <header className="flex items-start justify-between gap-3 pt-1">
         <div>
-          <h1 className="text-[22px] font-semibold leading-7">Plan</h1>
+          <h1 className="display text-[26px] leading-8">Plan</h1>
           {plan && (
             <p className="mt-0.5 text-[12px]" style={{ color: "var(--ink-3)" }}>
               Generated {relativeTime(plan.generated_at, now)}
