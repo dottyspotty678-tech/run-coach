@@ -121,7 +121,7 @@ function ChangeForm({
                   setRequestedType(active ? null : t);
                   setMissing(false);
                 }}
-                className="min-h-[32px] rounded-full px-2.5 text-[12px] font-semibold"
+                className="min-h-[32px] rounded-lg px-2.5 text-[12px] font-semibold"
                 style={
                   active
                     ? { background: "var(--accent)", color: "var(--on-accent)" }
@@ -266,18 +266,19 @@ export function PlanTable({
                   aria-expanded={isOpen}
                   className="grid w-full grid-cols-[92px_64px_1fr] items-center gap-2 px-4 py-3 text-left"
                   style={{
-                    background: row.isToday ? "var(--accent-soft)" : undefined,
-                    opacity: row.isPast && !row.isToday ? 0.6 : 1,
+                    // Today gets a lane bar on the left edge, not a tinted fill.
+                    boxShadow: row.isToday ? "inset 3px 0 0 var(--accent)" : undefined,
+                    opacity: row.isPast && !row.isToday ? 0.55 : 1,
                   }}
                 >
                   <span className="min-w-0">
                     <span
-                      className="block text-[13px] font-semibold leading-4"
+                      className={`block text-[13px] leading-4 ${row.isToday ? "overline" : "font-semibold"}`}
                       style={{ color: row.isToday ? "var(--accent)" : "var(--ink)" }}
                     >
                       {row.dayLabel}
                     </span>
-                    <span className="block text-[11px]" style={{ color: "var(--ink-3)" }}>
+                    <span className="tabular block text-[10.5px]" style={{ color: "var(--ink-3)" }}>
                       {row.dateLabel}
                     </span>
                   </span>
@@ -326,7 +327,7 @@ export function PlanTable({
                         </span>
                       )}
                     </div>
-                    <h3 className="text-[16px] font-semibold leading-[22px]">{row.title}</h3>
+                    <h3 className="display text-[16px] leading-[22px]">{row.title}</h3>
                     <p className="text-[14px] leading-[21px]">{row.detail}</p>
                     <p
                       className="border-l-2 pl-2.5 text-[12px] leading-[17px]"

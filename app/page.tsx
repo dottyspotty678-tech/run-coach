@@ -160,7 +160,10 @@ export default async function DashboardPage() {
       <main className="flex flex-col gap-4 px-4 pt-3">
         {/* Header */}
         <header className="flex flex-wrap items-baseline gap-x-3 gap-y-1.5 pt-1">
-          <h1 className="text-[22px] font-semibold leading-7">{formatDayShort(today)}</h1>
+          {/* The date is a figure — it belongs to the split board. */}
+          <h1 className="display text-[20px] uppercase leading-7">
+            {formatDayShort(today)}
+          </h1>
           <div className="flex flex-wrap gap-1.5">
             {isTravelToday && (
               <span className="chip" style={{ color: "var(--s-long)", background: "var(--s-long-soft)" }}>
@@ -183,17 +186,17 @@ export default async function DashboardPage() {
         {/* Banners — quiet in V2, the hero dominates */}
         {planReady && (
           <Banner quiet variant="info" href="/plan" linkLabel="Review it">
-            Next week's plan is ready
+            Next week&apos;s plan is ready
           </Banner>
         )}
         {sundayEvening && !planReady && (
           <Banner quiet variant="info" href="/plan" linkLabel="Plan tab">
-            Next week's plan generates this evening
+            Next week&apos;s plan generates this evening
           </Banner>
         )}
         {showCheckinNudge && (
           <Banner quiet variant="info" href="/checkin" linkLabel="Check in">
-            How did this week feel? A 30-second note shapes next week's plan
+            How did this week feel? A 30-second note shapes next week&apos;s plan
           </Banner>
         )}
         {stravaBroken && (
@@ -217,22 +220,34 @@ export default async function DashboardPage() {
           <section className="card flex flex-col items-start gap-3 p-5">
             <h2 className="text-[20px] font-semibold">No plan yet for this week</h2>
             <p className="text-[14px]" style={{ color: "var(--ink-2)" }}>
-              Generate the week's training and away-day meals from your calendar and recent
+              Generate the week&apos;s training and away-day meals from your calendar and recent
               running.
             </p>
             <GeneratePlanButton hasPlan={false} />
           </section>
         ) : todaySession ? (
-          <section className="card flex flex-col gap-2.5 p-5">
+          /* The hero is the next split: a start-line rule in the session's
+             colour, then the session as a board entry. */
+          <section
+            className="card flex flex-col gap-2.5 p-5"
+            style={{
+              borderTop: `3px solid ${SESSION_META[todaySession.session_type].color}`,
+              borderTopLeftRadius: 0,
+              borderTopRightRadius: 0,
+            }}
+          >
             <div className="flex items-center justify-between gap-2">
               <SessionBadge type={todaySession.session_type} />
               {todaySession.duration_min > 0 && (
-                <span className="text-[13px] font-semibold tabular" style={{ color: "var(--ink-2)" }}>
-                  {todaySession.duration_min} min
+                <span className="tabular text-[15px] font-semibold" style={{ color: "var(--ink)" }}>
+                  {todaySession.duration_min}
+                  <span className="text-[11px]" style={{ color: "var(--ink-2)" }}>
+                    {" "}MIN
+                  </span>
                 </span>
               )}
             </div>
-            <h2 className="text-[28px] font-semibold leading-[34px]">{todaySession.title}</h2>
+            <h2 className="display text-[24px] leading-[31px]">{todaySession.title}</h2>
             <p className="text-[15px] leading-[22px]">{todaySession.detail}</p>
             <p
               className="border-l-2 pl-3 text-[13px] leading-[18px]"
@@ -255,7 +270,7 @@ export default async function DashboardPage() {
         ) : (
           <section className="card flex flex-col gap-2 p-5">
             <span className="overline" style={{ color: "var(--ink-2)" }}>
-              This week's plan
+              This week&apos;s plan
             </span>
             <p className="text-[15px] leading-[22px] line-clamp-4 whitespace-pre-wrap">
               {heroPlan?.training_plan_text}
@@ -299,10 +314,10 @@ export default async function DashboardPage() {
             <span className="overline block" style={{ color: "var(--ink-2)" }}>
               Training volume — last 7 days
             </span>
-            <span className="mt-1 block text-[24px] font-semibold tabular leading-7">
+            <span className="tabular mt-1 block text-[26px] font-semibold leading-8">
               {last7Km.toFixed(0)}
-              <span className="text-[14px] font-medium" style={{ color: "var(--ink-2)" }}>
-                {" "}km running
+              <span className="text-[12px] font-medium" style={{ color: "var(--ink-2)" }}>
+                {" "}KM RUN
               </span>
             </span>
             <span className="mt-0.5 flex items-center gap-1 text-[12px]" style={{ color: "var(--ink-2)" }}>

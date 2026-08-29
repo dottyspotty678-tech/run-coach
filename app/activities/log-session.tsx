@@ -91,7 +91,7 @@ function SessionSheet({
           }
           onClose();
         }}
-        className="relative mx-3 mb-3 flex w-full max-w-lg flex-col gap-3 rounded-2xl p-5 pb-safe"
+        className="relative mx-3 mb-3 flex w-full max-w-lg flex-col gap-3 rounded-xl p-5 pb-safe"
         style={{ background: "var(--surface)", border: "1px solid var(--line)" }}
       >
         <h2 className="text-[17px] font-semibold">
@@ -128,7 +128,7 @@ function SessionSheet({
                     setUsingOther(false);
                     setTypeMissing(false);
                   }}
-                  className="min-h-[36px] rounded-full px-3 text-[13px] font-semibold"
+                  className="min-h-[36px] rounded-lg px-3 text-[13px] font-semibold"
                   style={
                     active
                       ? { background: "var(--accent)", color: "var(--on-accent)" }
@@ -142,7 +142,7 @@ function SessionSheet({
             <button
               type="button"
               onClick={() => setUsingOther(true)}
-              className="min-h-[36px] rounded-full px-3 text-[13px] font-semibold"
+              className="min-h-[36px] rounded-lg px-3 text-[13px] font-semibold"
               style={
                 usingOther
                   ? { background: "var(--accent)", color: "var(--on-accent)" }

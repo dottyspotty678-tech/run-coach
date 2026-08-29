@@ -1,97 +1,122 @@
-# Run Coach — design system (v1 redesign)
+# Run Coach — design system (v2 overhaul)
 
 Companion to `REQUIREMENTS.md`. This document is the contract for the UI layer: visual
 language, tokens, component inventory and navigation. The implementation lives in
-`app/globals.css` (tokens), `components/` (shared UI) and the route files.
+`app/globals.css` (tokens), `app/layout.tsx` (font wiring), `components/` (shared UI) and
+the route files.
 
 ---
 
-## 1. Visual direction: "Evening split"
+## 1. Visual direction: "Negative split"
 
 Run Coach is opened twice: for 20 seconds in a hotel corridor at 21:40, and for 10 calm
-minutes on a Sunday evening. Both moments happen at night, on a phone, by a tired person who
-wants an answer, not an experience. The design direction follows from that:
+minutes on a Sunday evening. Both moments happen at night, on a phone, by a tired person
+who wants an answer, not an experience. A negative split — running the second half faster —
+is also a pun on the inverted, dark-first palette. The design world is the **timing board
+and the split sheet**: stadium clocks, finish-line printouts, the split table on a race
+result.
 
-- **Dark-first, calm, typography-led.** The dark theme is the primary design target (evening
-  use); light mode is a faithful daytime translation, not an afterthought. Near-black
-  blue-grey surfaces, generous type, no decoration. The light theme uses a warm paper tone so
-  the app never feels clinical.
-- **One warm accent.** A single burnt-orange accent (`--accent`) marks exactly two things:
-  primary actions and the active tab. It reads as energy without shouting, and it survives
-  both themes. Nothing else is orange except the `race` session colour, which deliberately
-  shares the accent hue — race day is the point of the whole app.
-- **Hierarchy does the work.** The Today screen answers "what should I do tonight?" through
-  scale alone: the session card is the largest element on any screen in the app; everything
-  below it steps down. No gradients, no shadows heavier than a hairline border, no
-  illustration.
-- **Colour = session type, always.** Each of the seven session types owns a fixed hue used
-  identically in badges, week-strip tiles and the volume chart. A user learns "green evening"
-  means easy in week one and never re-learns it.
+- **Dark-first: a floodlit track after hours.** The dark theme is the primary design
+  target. Blue-black ground (not neutral near-black), chalk-white ink, slate card
+  surfaces. Light mode is a genuine daylight translation — cool paper, not warm cream.
+- **The split board is the signature.** Every figure in the app — paces, km, minutes,
+  dates in tables, the PIN pad, chart labels, the hero session title — is set in a
+  timing-board monospace (Azeret Mono). Data rows read like race splits: label left,
+  mono figure right, hairline rules. Everything around the figures stays quiet.
+- **One accent: finish-tape pink.** `--accent` is fluorescent finish-line tape. It marks
+  primary actions, the active tab's lane indicator and the today marker — nothing else.
+  The `race` session colour deliberately shares the accent hue: race day is the point of
+  the whole app. Warnings are scoreboard amber, like an amber stadium board message.
+- **Structure encodes state.** Today is a 3px accent lane bar on the row's left edge, not
+  a tinted fill. The hero card carries a 3px "start line" rule in the session's colour.
+  Chips are rectangular timing tags (mono, uppercase, hairline border), not pills.
+- **Colour = session type, always.** Each of the eight session types owns a fixed hue used
+  identically in badges, table rows and the volume chart. Badges always pair colour with a
+  text label (colour-blind safe). No gradients, no shadows, no illustration.
 
 ## 2. Colour system
 
 All colours are CSS custom properties defined in `app/globals.css` under `:root` and a
 `prefers-color-scheme: dark` override, mapped to Tailwind utilities via `@theme inline`.
+The variable names are stable API — components never hard-code hex values.
 
 ### Core palette
 
 | Token          | Light                    | Dark                     | Use |
 |----------------|--------------------------|--------------------------|-----|
-| `--bg`         | `#F4F3EF` warm paper     | `#101214` near-black     | page background |
-| `--surface`    | `#FFFFFF`                | `#1A1D21`                | cards |
-| `--raised`     | `#ECEAE4`                | `#23272C`                | chips, secondary surfaces, keypad keys |
-| `--ink`        | `#1B1D1F`                | `#F2F3F4`                | primary text |
-| `--ink-2`      | `#5A6068`                | `#9AA1A9`                | secondary text |
-| `--ink-3`      | `#8B9098`                | `#6A7178`                | tertiary/disabled text |
-| `--line`       | `rgba(27,29,31,.12)`     | `rgba(242,243,244,.10)`  | hairline borders |
-| `--accent`     | `#D9480F`                | `#FF8A50`                | primary buttons, active tab, links |
-| `--on-accent`  | `#FFFFFF`                | `#1B1D1F`                | text on accent |
-| `--accent-soft`| `rgba(217,72,15,.10)`    | `rgba(255,138,80,.14)`   | accent-tinted fills |
-| `--ok`         | `#2F9E44`                | `#69DB7C`                | success, completed ticks |
-| `--warn`       | `#E8990C`                | `#FFC078`                | stale/warning banners |
-| `--danger`     | `#D6336C` → `#E03131`    | `#FF8787`                | errors, destructive actions |
+| `--bg`         | `#EEF1F6` cool paper     | `#0C111B` track night    | page background |
+| `--surface`    | `#FFFFFF`                | `#141A26` slate lane     | cards |
+| `--raised`     | `#E2E7EF`                | `#1D2534`                | chips, secondary surfaces, keypad keys |
+| `--ink`        | `#17202E`                | `#F0F3F8` chalk          | primary text |
+| `--ink-2`      | `#515D70`                | `#96A0B5`                | secondary text |
+| `--ink-3`      | `#8792A3`                | `#64708A`                | tertiary/disabled text |
+| `--line`       | `rgba(23,32,46,.12)`     | `rgba(240,243,248,.09)`  | hairline borders |
+| `--accent`     | `#D11D62`                | `#FF4F87` finish tape    | primary buttons, active tab, today marker, links |
+| `--on-accent`  | `#FFFFFF`                | `#180510`                | text on accent |
+| `--accent-soft`| `rgba(209,29,98,.09)`    | `rgba(255,79,135,.13)`   | accent-tinted fills |
+| `--ok`         | `#178A4C`                | `#45D483`                | success, completed ticks |
+| `--warn`       | `#96660A`                | `#F5B84D` scoreboard amber | stale/warning banners |
+| `--danger`     | `#C33B3B`                | `#FF7676`                | errors, destructive actions |
 
 ### Session-type colours (fixed across the app)
 
 Each has a strong tone (`--s-*`) for text/icons and a soft tone (`--s-*-soft`) for fills.
+The accent moved from orange to pink in this overhaul, so `race` moved with it (the
+"race shares the accent hue" rule is deliberate and kept).
 
-| Session     | Light strong | Dark strong | Abbrev (week strip) |
-|-------------|--------------|-------------|---------------------|
-| `rest`      | `#68707A`    | `#8B939C`   | Rest |
-| `easy`      | `#2F9E44`    | `#69DB7C`   | Easy |
-| `tempo`     | `#B08900`    | `#FFD43B`   | Tmp |
-| `intervals` | `#E03131`    | `#FF8787`   | Int |
-| `long`      | `#1971C2`    | `#4DABF7`   | Long |
-| `cross`     | `#7048E8`    | `#B197FC`   | XT |
-| `strength`  | `#0B7285`    | `#66D9E8`   | Str (added in fix round 1) |
-| `race`      | `#D9480F`    | `#FF8A50`   | Race |
+| Session     | Light strong | Dark strong | Abbrev (tables) |
+|-------------|--------------|-------------|-----------------|
+| `rest`      | `#66717F`    | `#8C97A8`   | Rest |
+| `easy`      | `#1F8A4D`    | `#4FD07F`   | Easy |
+| `tempo`     | `#93720A`    | `#FFD24A`   | Tmp |
+| `intervals` | `#CE3B3B`    | `#FF6E6E`   | Int |
+| `long`      | `#1D6FC2`    | `#57ABFF`   | Long |
+| `cross`     | `#6A48D8`    | `#B08CFF`   | XT |
+| `strength`  | `#0E8578`    | `#3ED3C4`   | Str |
+| `race`      | `#D11D62`    | `#FF4F87`   | Race |
 
 Badges are always colour + text label, never colour alone (colour-blind safe).
 
 ## 3. Typography
 
-System stack only (SF Pro on iOS — the target device), per the performance budget:
-`-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif`.
+Two faces, self-hosted at build time via `next/font/google` (wired in `app/layout.tsx`,
+exposed as `--font-body` and `--font-digits` in `app/globals.css`):
 
-Scale (rem, 4-step): 
+- **Hanken Grotesk** — body and UI copy. Warm, highly legible on a phone at night.
+- **Azeret Mono** (500/600/700) — the timing-board face. Carries every figure in the app
+  plus display titles and board labels. It is content, not decoration: the mono appears
+  wherever a number does the talking.
 
-- **Display 28/34 semibold** — hero session title on Today only.
-- **Title 22/28 semibold** — screen titles.
-- **Headline 17/24 semibold** — card titles, recipe names.
+Roles (utility classes in `app/globals.css`):
+
+- **`.display`** — mono 600, −0.035em: hero session title (24/31), screen-date header
+  (20, uppercase), expanded plan-row titles (16/22).
+- **Title 22/28 bold (body face)** — screen titles.
+- **Headline 17/24 semibold (body face)** — card titles, recipe names.
 - **Body 15/22 regular** — detail text, instructions.
 - **Footnote 13/18 regular** — metadata, timestamps, banner copy.
-- **Overline 11/14 semibold, uppercase, +0.06em tracking** — badges, section labels, tab labels.
+- **`.overline`** — mono 10.5/600, uppercase, +0.09em: section labels, column heads,
+  stat captions, tab labels.
+- **`.tabular`** — mono with `tabular-nums`, −0.02em: every inline figure (paces, km,
+  minutes, dates in tables, PIN keys, chart labels, quantity columns).
 
-Numbers in stats use `font-variant-numeric: tabular-nums`.
+Headings carry −0.015em tracking globally.
 
 ## 4. Spacing, radius, elevation
 
 - 4 px base grid. Screen padding 16 px; card padding 16 px; section gap 24 px; card gap 12 px.
-- Radius: cards 16 px; buttons and inputs 12 px; chips/badges and keypad keys full (999 px).
-- Elevation: none. Separation is done with surface tone + 1 px `--line` hairlines.
+- Radius: cards 12 px; inputs 10 px; buttons 8 px; chips/timing tags 5 px; keypad keys and
+  shopping ticks are rounded squares. Pills are retired.
+- Elevation: none. Separation is surface tone + 1 px `--line` hairlines. The only thick
+  rules are semantic: the hero start line (3 px, session colour), the today lane bar
+  (3 px, accent), the active-tab lane indicator (2 px, accent).
 - Tap targets ≥ 44 × 44 px everywhere (tab items, keypad, checkboxes, steppers, chips).
+- Keyboard focus: global `:focus-visible` ring in `--accent`.
+- Motion: skeleton pulse, spinner, PIN shake only; `prefers-reduced-motion` kills the
+  pulse and shake and slows the spinner.
 - Safe areas: root layout pads `env(safe-area-inset-top)`; the tab bar pads
-  `env(safe-area-inset-bottom)`; content reserves tab-bar height + inset at the bottom.
+  `env(safe-area-inset-bottom)`; content reserves tab-bar height + inset at the bottom
+  (`.pb-tabbar`).
 - Mobile-first at 390 px, usable at 320 px (single column throughout; `max-w-lg` centred on
   desktop).
 
@@ -99,9 +124,9 @@ Numbers in stats use `font-variant-numeric: tabular-nums`.
 
 | Component | File | Notes |
 |---|---|---|
-| Tab bar | `components/tab-bar.tsx` | V2: 4 tabs (Dashboard · Plan · Nutrition · Settings), blur surface, active = accent; tapping active tab scrolls to top; hidden on `/pin`. |
-| Card | utility classes (`.card`) | Surface, radius 16, hairline border. |
-| Session badge | `components/session.tsx` | Soft fill + strong text, overline type. Fixed colour per type. |
+| Tab bar | `components/tab-bar.tsx` | V2: 4 tabs (Dashboard · Plan · Nutrition · Settings), blur surface, active = accent + 2 px lane indicator, mono uppercase labels; tapping active tab scrolls to top; hidden on `/pin`. |
+| Card | utility classes (`.card`) | Surface, radius 12, hairline border. |
+| Session badge | `components/session.tsx` | Timing tag: soft fill + strong text + hairline border, mono uppercase. Fixed colour per type. |
 | Meal-type badge | `components/session.tsx` | v1 legacy rendering only (Home / Eating out / Quick) — the v2 meal model has no meal types. |
 | Context chip | `.chip` utility | Header chips: "Travel day", "Race week", "6 weeks to …". |
 | Banner | `components/banner.tsx` | Variants: warn (stale/disconnected), error, info, offline; `quiet` prop (V2 Dashboard) drops the fill for tinted text + hairline so banners sit below the hero visually. |

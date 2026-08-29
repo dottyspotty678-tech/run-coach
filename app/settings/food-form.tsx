@@ -60,7 +60,7 @@ function TagInput({
               key={tag}
               type="button"
               onClick={() => setTags(tags.filter((t) => t !== tag))}
-              className="flex min-h-[32px] items-center gap-1 rounded-full px-3 text-[13px] font-medium"
+              className="flex min-h-[32px] items-center gap-1 rounded-lg px-3 text-[13px] font-medium"
               style={{ background: "var(--raised)" }}
               aria-label={`Remove ${tag}`}
             >

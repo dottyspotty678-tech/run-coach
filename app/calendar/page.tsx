@@ -65,7 +65,7 @@ export default async function CalendarPage({
       </header>
 
       {ms_error && (
-        <Banner variant="error">Couldn't connect the calendar ({ms_error}) — try again.</Banner>
+        <Banner variant="error">Couldn&apos;t connect the calendar ({ms_error}) — try again.</Banner>
       )}
 
       {!connected ? (
