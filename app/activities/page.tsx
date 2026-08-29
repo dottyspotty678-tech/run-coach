@@ -108,7 +108,7 @@ export default async function ActivityPage({
       </header>
 
       {strava_error && (
-        <Banner variant="error">Couldn't connect Strava ({strava_error}) — try again.</Banner>
+        <Banner variant="error">Couldn&apos;t connect Strava ({strava_error}) — try again.</Banner>
       )}
 
       {!connected && (
@@ -137,7 +137,7 @@ export default async function ActivityPage({
                   <span className="block text-[17px] font-semibold tabular leading-5">
                     {last7Km.toFixed(0)} km
                   </span>
-                  <span className="block text-[11px]" style={{ color: "var(--ink-2)" }}>
+                  <span className="overline block" style={{ color: "var(--ink-2)" }}>
                     7 days
                   </span>
                 </span>
@@ -145,7 +145,7 @@ export default async function ActivityPage({
                   <span className="block text-[17px] font-semibold tabular leading-5">
                     {last28Km.toFixed(0)} km
                   </span>
-                  <span className="block text-[11px]" style={{ color: "var(--ink-2)" }}>
+                  <span className="overline block" style={{ color: "var(--ink-2)" }}>
                     28 days
                   </span>
                 </span>
@@ -181,7 +181,10 @@ export default async function ActivityPage({
                         textAnchor="middle"
                         fontSize="9"
                         fill="var(--ink-3)"
-                        style={{ fontVariantNumeric: "tabular-nums" }}
+                        style={{
+                          fontFamily: "var(--font-digits)",
+                          fontVariantNumeric: "tabular-nums",
+                        }}
                       >
                         {km.toFixed(0)}
                       </text>
@@ -190,9 +193,10 @@ export default async function ActivityPage({
                       x={x + barW / 2}
                       y={chartH + 12}
                       textAnchor="middle"
-                      fontSize="8.5"
+                      fontSize="8"
                       fill={isCurrent ? "var(--accent)" : "var(--ink-3)"}
-                      fontWeight={isCurrent ? 700 : 400}
+                      fontWeight={isCurrent ? 700 : 500}
+                      style={{ fontFamily: "var(--font-digits)" }}
                     >
                       {formatDateShort(week)}
                     </text>
@@ -235,7 +239,7 @@ export default async function ActivityPage({
                       className="flex items-center gap-3 px-4 py-3"
                       style={{ borderColor: "var(--line)" }}
                     >
-                      <span className="w-14 shrink-0 text-[13px] font-semibold" style={{ color: date === today ? "var(--accent)" : "var(--ink-2)" }}>
+                      <span className="tabular w-14 shrink-0 text-[12px] font-semibold" style={{ color: date === today ? "var(--accent)" : "var(--ink-2)" }}>
                         {formatDateShort(date)}
                       </span>
                       <span className="min-w-0 flex-1">

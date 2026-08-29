@@ -1,81 +1,93 @@
 @import "tailwindcss";
 
 /* ------------------------------------------------------------------ */
-/* Design tokens — see docs/DESIGN.md ("Evening split")                */
+/* Design tokens — see docs/DESIGN.md ("Negative split")               */
+/*                                                                    */
+/* Dark-first: a floodlit track after hours. Blue-black ground, chalk */
+/* ink, finish-tape pink accent, scoreboard-amber warnings. Every     */
+/* figure in the app is a timing-board digit (Azeret Mono).           */
 /* ------------------------------------------------------------------ */
 
 :root {
-  --bg: #f4f3ef;
-  --surface: #ffffff;
-  --raised: #eceae4;
-  --ink: #1b1d1f;
-  --ink-2: #5a6068;
-  --ink-3: #8b9098;
-  --line: rgba(27, 29, 31, 0.12);
-  --accent: #d9480f;
-  --on-accent: #ffffff;
-  --accent-soft: rgba(217, 72, 15, 0.1);
-  --ok: #2f9e44;
-  --ok-soft: rgba(47, 158, 68, 0.12);
-  --warn: #b07d0a;
-  --warn-soft: rgba(232, 153, 12, 0.14);
-  --danger: #d6336c;
-  --danger-soft: rgba(214, 51, 108, 0.1);
+  /* Type roles (faces wired via next/font in app/layout.tsx). */
+  --font-body: var(--font-body-app), -apple-system, BlinkMacSystemFont,
+    "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+  --font-digits: var(--font-digits-app), ui-monospace, "SF Mono",
+    SFMono-Regular, Menlo, Consolas, monospace;
 
-  /* Session-type colours (fixed across the app) */
-  --s-rest: #68707a;
-  --s-rest-soft: rgba(104, 112, 122, 0.12);
-  --s-easy: #2f9e44;
-  --s-easy-soft: rgba(47, 158, 68, 0.12);
-  --s-tempo: #b08900;
-  --s-tempo-soft: rgba(176, 137, 0, 0.14);
-  --s-intervals: #e03131;
-  --s-intervals-soft: rgba(224, 49, 49, 0.1);
-  --s-long: #1971c2;
-  --s-long-soft: rgba(25, 113, 194, 0.1);
-  --s-cross: #7048e8;
-  --s-cross-soft: rgba(112, 72, 232, 0.1);
-  --s-strength: #0b7285;
-  --s-strength-soft: rgba(11, 114, 133, 0.1);
-  --s-race: #d9480f;
-  --s-race-soft: rgba(217, 72, 15, 0.12);
+  /* Light — "cool paper": an overcast morning, not warm cream. */
+  --bg: #eef1f6;
+  --surface: #ffffff;
+  --raised: #e2e7ef;
+  --ink: #17202e;
+  --ink-2: #515d70;
+  --ink-3: #8792a3;
+  --line: rgba(23, 32, 46, 0.12);
+  --accent: #d11d62;
+  --on-accent: #ffffff;
+  --accent-soft: rgba(209, 29, 98, 0.09);
+  --ok: #178a4c;
+  --ok-soft: rgba(23, 138, 76, 0.11);
+  --warn: #96660a;
+  --warn-soft: rgba(224, 158, 34, 0.14);
+  --danger: #c33b3b;
+  --danger-soft: rgba(195, 59, 59, 0.1);
+
+  /* Session-type colours (fixed across the app; badge = colour + label) */
+  --s-rest: #66717f;
+  --s-rest-soft: rgba(102, 113, 127, 0.12);
+  --s-easy: #1f8a4d;
+  --s-easy-soft: rgba(31, 138, 77, 0.11);
+  --s-tempo: #93720a;
+  --s-tempo-soft: rgba(197, 158, 22, 0.15);
+  --s-intervals: #ce3b3b;
+  --s-intervals-soft: rgba(206, 59, 59, 0.1);
+  --s-long: #1d6fc2;
+  --s-long-soft: rgba(29, 111, 194, 0.1);
+  --s-cross: #6a48d8;
+  --s-cross-soft: rgba(106, 72, 216, 0.1);
+  --s-strength: #0e8578;
+  --s-strength-soft: rgba(14, 133, 120, 0.11);
+  --s-race: #d11d62;
+  --s-race-soft: rgba(209, 29, 98, 0.1);
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --bg: #101214;
-    --surface: #1a1d21;
-    --raised: #23272c;
-    --ink: #f2f3f4;
-    --ink-2: #9aa1a9;
-    --ink-3: #6a7178;
-    --line: rgba(242, 243, 244, 0.1);
-    --accent: #ff8a50;
-    --on-accent: #1b1d1f;
-    --accent-soft: rgba(255, 138, 80, 0.14);
-    --ok: #69db7c;
-    --ok-soft: rgba(105, 219, 124, 0.14);
-    --warn: #ffc078;
-    --warn-soft: rgba(255, 192, 120, 0.14);
-    --danger: #ff8787;
-    --danger-soft: rgba(255, 135, 135, 0.12);
+    /* Dark — "track night": the primary design target. */
+    --bg: #0c111b;
+    --surface: #141a26;
+    --raised: #1d2534;
+    --ink: #f0f3f8;
+    --ink-2: #96a0b5;
+    --ink-3: #64708a;
+    --line: rgba(240, 243, 248, 0.09);
+    --accent: #ff4f87;
+    --on-accent: #180510;
+    --accent-soft: rgba(255, 79, 135, 0.13);
+    --ok: #45d483;
+    --ok-soft: rgba(69, 212, 131, 0.13);
+    --warn: #f5b84d;
+    --warn-soft: rgba(245, 184, 77, 0.13);
+    --danger: #ff7676;
+    --danger-soft: rgba(255, 118, 118, 0.12);
 
-    --s-rest: #8b939c;
-    --s-rest-soft: rgba(139, 147, 156, 0.16);
-    --s-easy: #69db7c;
-    --s-easy-soft: rgba(105, 219, 124, 0.14);
-    --s-tempo: #ffd43b;
-    --s-tempo-soft: rgba(255, 212, 59, 0.13);
-    --s-intervals: #ff8787;
-    --s-intervals-soft: rgba(255, 135, 135, 0.13);
-    --s-long: #4dabf7;
-    --s-long-soft: rgba(77, 171, 247, 0.14);
-    --s-cross: #b197fc;
-    --s-cross-soft: rgba(177, 151, 252, 0.14);
-    --s-strength: #66d9e8;
-    --s-strength-soft: rgba(102, 217, 232, 0.14);
-    --s-race: #ff8a50;
-    --s-race-soft: rgba(255, 138, 80, 0.14);
+    --s-rest: #8c97a8;
+    --s-rest-soft: rgba(140, 151, 168, 0.15);
+    --s-easy: #4fd07f;
+    --s-easy-soft: rgba(79, 208, 127, 0.13);
+    --s-tempo: #ffd24a;
+    --s-tempo-soft: rgba(255, 210, 74, 0.12);
+    --s-intervals: #ff6e6e;
+    --s-intervals-soft: rgba(255, 110, 110, 0.12);
+    --s-long: #57abff;
+    --s-long-soft: rgba(87, 171, 255, 0.13);
+    --s-cross: #b08cff;
+    --s-cross-soft: rgba(176, 140, 255, 0.13);
+    --s-strength: #3ed3c4;
+    --s-strength-soft: rgba(62, 211, 196, 0.12);
+    --s-race: #ff4f87;
+    --s-race-soft: rgba(255, 79, 135, 0.13);
   }
 }
 
@@ -113,8 +125,8 @@
   --color-s-race: var(--s-race);
   --color-s-race-soft: var(--s-race-soft);
 
-  --font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, sans-serif;
+  --font-sans: var(--font-body);
+  --font-mono: var(--font-digits);
 }
 
 html {
@@ -124,11 +136,26 @@ html {
 body {
   background: var(--bg);
   color: var(--ink);
-  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
-    "Helvetica Neue", Arial, sans-serif;
+  font-family: var(--font-sans);
   font-size: 15px;
   line-height: 1.45;
   -webkit-tap-highlight-color: transparent;
+}
+
+h1,
+h2,
+h3 {
+  letter-spacing: -0.015em;
+}
+
+::selection {
+  background: var(--accent-soft);
+}
+
+/* Visible keyboard focus, everywhere. */
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 /* ------------------------------------------------------------------ */
@@ -138,27 +165,47 @@ body {
 .card {
   background: var(--surface);
   border: 1px solid var(--line);
-  border-radius: 16px;
+  border-radius: 12px;
 }
 
+/* Timing tag: rectangular chip, mono uppercase — a split-sheet label,
+   not a pill. Colour always pairs with a text label. */
 .chip {
   display: inline-flex;
   align-items: center;
   gap: 4px;
-  border-radius: 999px;
-  padding: 3px 10px;
-  font-size: 11px;
+  border-radius: 5px;
+  border: 1px solid color-mix(in srgb, currentColor 28%, transparent);
+  padding: 2px 7px;
+  font-family: var(--font-digits);
+  font-size: 10.5px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.07em;
   text-transform: uppercase;
-  line-height: 1.3;
+  line-height: 1.5;
 }
 
+/* Board label: section headers and column heads, set like a scoreboard row. */
 .overline {
-  font-size: 11px;
+  font-family: var(--font-digits);
+  font-size: 10.5px;
   font-weight: 600;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.09em;
   text-transform: uppercase;
+}
+
+/* The split board: every figure in the app is a timing-board digit. */
+.tabular {
+  font-family: var(--font-digits);
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.02em;
+}
+
+/* Display role: hero titles and big figures share the timing mono. */
+.display {
+  font-family: var(--font-digits);
+  font-weight: 600;
+  letter-spacing: -0.035em;
 }
 
 .btn-primary {
@@ -167,12 +214,12 @@ body {
   justify-content: center;
   gap: 8px;
   min-height: 44px;
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 0 20px;
   background: var(--accent);
   color: var(--on-accent);
   font-size: 15px;
-  font-weight: 600;
+  font-weight: 650;
 }
 .btn-primary:disabled {
   opacity: 0.55;
@@ -184,9 +231,10 @@ body {
   justify-content: center;
   gap: 8px;
   min-height: 44px;
-  border-radius: 12px;
+  border-radius: 8px;
   padding: 0 16px;
   background: var(--raised);
+  border: 1px solid var(--line);
   color: var(--ink);
   font-size: 15px;
   font-weight: 600;
@@ -197,7 +245,7 @@ body {
 
 .input {
   min-height: 44px;
-  border-radius: 12px;
+  border-radius: 10px;
   border: 1px solid var(--line);
   background: var(--surface);
   padding: 0 12px;
@@ -209,9 +257,8 @@ body {
   outline: 2px solid var(--accent);
   outline-offset: -1px;
 }
-
-.tabular {
-  font-variant-numeric: tabular-nums;
+.input::placeholder {
+  color: var(--ink-3);
 }
 
 /* Skeletons reserve space; subtle pulse, no layout shift. */
@@ -266,6 +313,23 @@ body {
   border: 2px solid currentColor;
   border-top-color: transparent;
   animation: spin 0.8s linear infinite;
+}
+
+/* Reduced motion: kill the decorative movement, slow the essential. */
+@media (prefers-reduced-motion: reduce) {
+  .skeleton {
+    animation: none;
+    opacity: 0.7;
+  }
+  .pin-shake {
+    animation: none;
+  }
+  .spinner {
+    animation-duration: 1.6s;
+  }
+  html {
+    scroll-behavior: auto !important;
+  }
 }
 
 /* iOS safe areas */

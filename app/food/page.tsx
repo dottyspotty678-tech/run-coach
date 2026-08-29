@@ -43,7 +43,7 @@ function AwayMealCard({ meal, isToday }: { meal: AwayMealEntry; isToday: boolean
           >
             {isToday ? "Today" : formatWeekday(meal.date)}
           </span>
-          <span className="block text-[11px]" style={{ color: "var(--ink-3)" }}>
+          <span className="tabular block text-[10.5px]" style={{ color: "var(--ink-3)" }}>
             {formatDateShort(meal.date)}
           </span>
         </span>
@@ -51,7 +51,7 @@ function AwayMealCard({ meal, isToday }: { meal: AwayMealEntry; isToday: boolean
           {meal.recipe_name}
         </span>
         {meal.prep_time_min > 0 && (
-          <span className="shrink-0 text-[12px] font-semibold tabular" style={{ color: "var(--ink-2)" }}>
+          <span className="tabular shrink-0 text-[12px] font-semibold" style={{ color: "var(--ink-2)" }}>
             {meal.prep_time_min} min
           </span>
         )}
@@ -73,7 +73,8 @@ function AwayMealCard({ meal, isToday }: { meal: AwayMealEntry; isToday: boolean
               {meal.ingredients.map((ing) => (
                 <li key={ing.item} className="flex items-baseline justify-between gap-3 text-[14px]">
                   <span className="min-w-0 flex-1">{ing.item}</span>
-                  <span className="shrink-0 text-[13px]" style={{ color: "var(--ink-2)" }}>
+                  {/* Quantities sit on the split board's right column. */}
+                  <span className="tabular shrink-0 text-[12px]" style={{ color: "var(--ink-2)" }}>
                     {ing.quantity}
                   </span>
                 </li>
@@ -180,7 +181,7 @@ export default async function NutritionPage() {
           <p className="text-[15px] font-medium">No away days coming up — nothing to prep.</p>
           <p className="mt-1 text-[13px]" style={{ color: "var(--ink-2)" }}>
             When the calendar shows a hotel stay or a trip outside Manchester or London, the
-            week's plan adds prep-ahead recipes and a shopping list here.
+            week&apos;s plan adds prep-ahead recipes and a shopping list here.
           </p>
         </section>
       ) : (
@@ -205,7 +206,7 @@ export default async function NutritionPage() {
             </h2>
             {shoppingList === null || shoppingList.length === 0 ? (
               <p className="card p-4 text-[14px]" style={{ color: "var(--ink-2)" }}>
-                Nothing on the list for this week's away meals.
+                Nothing on the list for this week&apos;s away meals.
               </p>
             ) : (
               <ShoppingList items={shoppingList} weekStart={weekStart} generatedAt={plan.generated_at} />

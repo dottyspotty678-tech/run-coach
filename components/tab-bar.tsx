@@ -50,13 +50,24 @@ export function TabBar() {
                   window.scrollTo({ top: 0, behavior: "smooth" });
                 }
               }}
-              className="flex min-h-[56px] flex-1 flex-col items-center justify-center gap-0.5"
+              className="relative flex min-h-[56px] flex-1 flex-col items-center justify-center gap-1"
               style={{ color: active ? "var(--accent)" : "var(--ink-3)" }}
             >
-              <Icon size={23} strokeWidth={active ? 2.1 : 1.8} />
+              {/* Lane indicator: a 2px rule over the active tab. */}
               <span
-                className="text-[10px] leading-3"
-                style={{ fontWeight: active ? 650 : 500 }}
+                aria-hidden="true"
+                className="absolute inset-x-4 top-0 h-[2px] rounded-full"
+                style={{ background: active ? "var(--accent)" : "transparent" }}
+              />
+              <Icon size={22} strokeWidth={active ? 2.1 : 1.8} />
+              <span
+                className="uppercase leading-3"
+                style={{
+                  fontFamily: "var(--font-digits)",
+                  fontSize: 9,
+                  letterSpacing: "0.08em",
+                  fontWeight: active ? 700 : 500,
+                }}
               >
                 {label}
               </span>

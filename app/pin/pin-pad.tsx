@@ -109,6 +109,9 @@ export function PinPad() {
       {/* Secondary-screen back affordance (no-op when unauthenticated — the
           gate simply renders again). */}
       <header className="w-full pt-2">
+        {/* A plain <a> is deliberate: the gate wants a full request so the
+            middleware re-evaluates the cookie, not a client-side navigation. */}
+        {/* eslint-disable-next-line @next/next/no-html-link-for-pages */}
         <a
           href="/"
           className="flex min-h-[44px] w-fit items-center text-[13px] font-semibold"
@@ -119,7 +122,7 @@ export function PinPad() {
       </header>
       <div className="flex flex-1 flex-col items-center justify-center gap-8">
         <div className="flex flex-col items-center gap-2">
-          <h1 className="text-[22px] font-semibold">Run Coach</h1>
+          <h1 className="display text-[20px] uppercase">Run Coach</h1>
           <p className="text-[13px]" style={{ color: "var(--ink-2)" }}>
             Enter your PIN
           </p>
@@ -127,10 +130,11 @@ export function PinPad() {
 
         {/* Dots */}
         <div className={`flex gap-4 ${shaking ? "pin-shake" : ""}`} aria-label="PIN entry" role="status">
+          {/* Timing lights: filled squares, not dots. */}
           {[0, 1, 2, 3].map((i) => (
             <span
               key={i}
-              className="h-4 w-4 rounded-full border-2 transition-colors"
+              className="h-4 w-4 rounded-[4px] border-2 transition-colors"
               style={
                 i < pin.length
                   ? { background: "var(--accent)", borderColor: "var(--accent)" }
@@ -160,8 +164,8 @@ export function PinPad() {
             type="button"
             onClick={() => press(k)}
             disabled={disabled}
-            className="mx-auto flex h-[72px] w-[72px] items-center justify-center rounded-full text-[26px] font-medium transition-transform active:scale-95 disabled:opacity-40"
-            style={{ background: "var(--raised)" }}
+            className="tabular mx-auto flex h-[72px] w-[72px] items-center justify-center rounded-2xl text-[26px] font-medium transition-transform active:scale-95 disabled:opacity-40"
+            style={{ background: "var(--raised)", border: "1px solid var(--line)" }}
           >
             {k}
           </button>
@@ -171,8 +175,8 @@ export function PinPad() {
           type="button"
           onClick={() => press("0")}
           disabled={disabled}
-          className="mx-auto flex h-[72px] w-[72px] items-center justify-center rounded-full text-[26px] font-medium transition-transform active:scale-95 disabled:opacity-40"
-          style={{ background: "var(--raised)" }}
+          className="tabular mx-auto flex h-[72px] w-[72px] items-center justify-center rounded-2xl text-[26px] font-medium transition-transform active:scale-95 disabled:opacity-40"
+          style={{ background: "var(--raised)", border: "1px solid var(--line)" }}
         >
           0
         </button>
@@ -181,7 +185,7 @@ export function PinPad() {
           onClick={erase}
           disabled={disabled || pin.length === 0}
           aria-label="Delete"
-          className="mx-auto flex h-[72px] w-[72px] items-center justify-center rounded-full transition-transform active:scale-95 disabled:opacity-40"
+          className="mx-auto flex h-[72px] w-[72px] items-center justify-center rounded-2xl transition-transform active:scale-95 disabled:opacity-40"
           style={{ color: "var(--ink-2)" }}
         >
           <IconBackspace size={26} strokeWidth={1.7} />

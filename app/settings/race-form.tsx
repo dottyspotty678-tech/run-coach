@@ -114,7 +114,7 @@ export function RaceForm({
                   key={p.label}
                   type="button"
                   onClick={() => setDistance(String(p.km))}
-                  className="min-h-[36px] rounded-full px-3.5 text-[13px] font-semibold"
+                  className="min-h-[36px] rounded-lg px-3.5 text-[13px] font-semibold"
                   style={
                     active
                       ? { background: "var(--accent)", color: "var(--on-accent)" }

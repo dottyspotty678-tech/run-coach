@@ -7,6 +7,9 @@ export function OfflineBanner() {
   const [offline, setOffline] = useState(false);
 
   useEffect(() => {
+    // Deliberate mount-time read of an external system (navigator.onLine):
+    // the server render can't know connectivity, so hydrate it once here.
+    // eslint-disable-next-line react-hooks/set-state-in-effect
     setOffline(!navigator.onLine);
     const goOffline = () => setOffline(true);
     const goOnline = () => setOffline(false);

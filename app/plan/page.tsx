@@ -134,7 +134,7 @@ export default async function PlanPage({
         <section className="card flex flex-col items-start gap-3 p-5">
           <h2 className="text-[20px] font-semibold">No plan yet for this week</h2>
           <p className="text-[14px]" style={{ color: "var(--ink-2)" }}>
-            Generate the week's training and away-day meals from your calendar and recent
+            Generate the week&apos;s training and away-day meals from your calendar and recent
             running.
           </p>
           <GeneratePlanButton hasPlan={false} />
@@ -232,7 +232,7 @@ export default async function PlanPage({
             const dayEvents = contextEvents.get(date) ?? [];
             return (
               <div key={date} className="flex gap-3 px-4 py-2.5" style={{ borderColor: "var(--line)" }}>
-                <span className="w-16 shrink-0 text-[13px] font-semibold" style={{ color: date === today ? "var(--accent)" : "var(--ink-2)" }}>
+                <span className="tabular w-16 shrink-0 text-[12px] font-semibold" style={{ color: date === today ? "var(--accent)" : "var(--ink-2)" }}>
                   {formatDateShort(date)}
                 </span>
                 <div className="flex min-w-0 flex-1 flex-col gap-1">

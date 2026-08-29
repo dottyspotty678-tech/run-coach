@@ -39,6 +39,9 @@ export function ShoppingList({
         const stored = JSON.parse(raw) as Stored;
         // A regenerated plan replaces the list and clears the checks.
         if (stored.generatedAt === generatedAt) {
+          // Deliberate mount-time read of an external system (localStorage):
+          // ticks can only be hydrated client-side, once, here.
+          // eslint-disable-next-line react-hooks/set-state-in-effect
           setTicked(new Set(stored.ticked));
         } else {
           localStorage.removeItem(storageKey(weekStart));
@@ -128,7 +131,7 @@ export function ShoppingList({
                       className="flex min-h-[48px] w-full items-center gap-3 px-4 py-2 text-left"
                     >
                       <span
-                        className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-full border"
+                        className="flex h-[22px] w-[22px] shrink-0 items-center justify-center rounded-[6px] border"
                         style={
                           isTicked
                             ? { background: "var(--ok)", borderColor: "var(--ok)", color: "var(--surface)" }
@@ -150,7 +153,7 @@ export function ShoppingList({
                       {/* Volume column (V2 sketch): quantity on the right */}
                       {item.quantity_note && (
                         <span
-                          className="shrink-0 text-[13px]"
+                          className="tabular shrink-0 text-[12px]"
                           style={{ color: isTicked ? "var(--ink-3)" : "var(--ink-2)" }}
                         >
                           {item.quantity_note}
