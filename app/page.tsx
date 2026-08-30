@@ -9,6 +9,7 @@ import {
   boundaryWeekStart,
   formatDayShort,
   isSundayEvening,
+  londonDateOf,
   londonParts,
   mondayOf,
   relativeTime,
@@ -19,6 +20,7 @@ import {
   awayDatesForRange,
   completedCategories,
   getEventsForWeek,
+  getLatestAppliedCheckin,
   getPlanForWeek,
   getRecentActivities,
   getRecentFeedback,
@@ -71,6 +73,7 @@ export default async function DashboardPage() {
     raceGoalRes,
     recentFeedback,
     prevWeekEvents,
+    appliedCheckin,
   ] = await Promise.all([
     getPlanForWeek(heroWeekStart),
     boundaryWeek === heroWeekStart ? Promise.resolve(null) : getPlanForWeek(boundaryWeek),
@@ -85,6 +88,9 @@ export default async function DashboardPage() {
     // (the span runs to the day before check-out), so include last week's
     // events when deriving today's away status.
     getEventsForWeek(addDays(heroWeekStart, -7)),
+    // §3.12 done state: last Sunday's check-in planned THIS week; one run
+    // today targets NEXT week. Either counts as "done for the week".
+    getLatestAppliedCheckin([heroWeekStart, addDays(heroWeekStart, 7)]),
   ]);
 
   const raceGoal = (raceGoalRes.data as RaceGoalRow | null) ?? null;
@@ -344,10 +350,22 @@ export default async function DashboardPage() {
             </span>
           </Link>
           <Link href="/checkin" className="card flex min-h-[64px] items-center gap-2.5 px-3.5 py-3">
-            <span className="shrink-0" style={{ color: "var(--accent)" }}>
+            <span
+              className="shrink-0"
+              style={{ color: appliedCheckin ? "var(--ok)" : "var(--accent)" }}
+            >
               <IconTick size={18} strokeWidth={2.2} />
             </span>
-            <span className="text-[14px] font-semibold leading-[18px]">Add a check-in</span>
+            <span className="flex min-w-0 flex-col">
+              <span className="text-[14px] font-semibold leading-[18px]">
+                {appliedCheckin ? "Check-in done" : isSunday ? "Sunday check-in due" : "Add a check-in"}
+              </span>
+              {appliedCheckin && (
+                <span className="text-[11px] leading-[15px]" style={{ color: "var(--ink-3)" }}>
+                  {formatDayShort(londonDateOf(appliedCheckin.applied_at))} · tap to revise
+                </span>
+              )}
+            </span>
           </Link>
           <Link href="/plan?edit=1" className="card flex min-h-[64px] items-center gap-2.5 px-3.5 py-3">
             <span className="shrink-0" style={{ color: "var(--accent)" }}>

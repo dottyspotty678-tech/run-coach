@@ -8,7 +8,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 const ELEVENLABS_BASE = "https://api.elevenlabs.io";
 
 /** Bump when the agent prompt/tools change so the stored agent is recreated. */
-const AGENT_CONFIG_VERSION = 1;
+const AGENT_CONFIG_VERSION = 2;
 
 function apiKey(): string {
   const key = process.env.ELEVENLABS_API_KEY;
@@ -108,7 +108,11 @@ Next week's plan as it currently stands:
 Next week's calendar (already known — only ask about what is NOT here):
 {{next_week_schedule}}
 
-RUN THE MEETING IN THREE PARTS, IN ORDER:
+MEETING MODE: {{meeting_mode}}
+- "full": run the three parts below, in order.
+- "revise": this week's check-in is already confirmed. Do NOT re-run the three parts. Instead, in two or three sentences read back what's on file — the recorded feedback for last week ({{recorded_feedback}}), the current injuries, and the shape of next week's plan from the context above — then ask what they'd like to change. Gather only the changes, then call submit_checkin with the COMPLETE set of answers: restate the unchanged areas faithfully from the context in their fields, fold the requested changes into the relevant fields, and prefix training_feedback with "unchanged: " if the runner didn't revisit how the week felt. Everything after submit_checkin works exactly as in a full meeting.
+
+FULL MEETING — THREE PARTS, IN ORDER:
 Part 1 — the week just gone. Open by quickly summarising last week's training from the context (a sentence or two: what they did, anything notable). Then ask how training felt this week and how they are feeling. Follow up once if the answer is thin. Ask specifically about any new niggles or injuries, and check in on any current ones listed above.
 Part 2 — next week's schedule. Briefly note what the calendar already shows, then ask what's on their schedule for next week that is NOT in the calendar — extra commitments, evenings that opened up, travel changes.
 Part 3 — cooking. Ask if there are any days next week they don't need to be cooking.
@@ -121,12 +125,15 @@ RULES:
 - No calories, macros or body-weight talk — meals stay qualitative.
 - UK English. Dates as "15 Aug". Keep questions short — this is a phone call, not a form.`;
 
-const FIRST_MESSAGE =
-  "Evening — got a few minutes for your Sunday check-in? Let's start with the week you've just had.";
+// Fully dynamic so the server can greet differently in revise mode.
+const FIRST_MESSAGE = "{{greeting}}";
 
 /** Dynamic variables the start route must supply for every conversation. */
 export const DYNAMIC_VARIABLE_KEYS = [
   "today",
+  "greeting",
+  "meeting_mode",
+  "recorded_feedback",
   "week_review",
   "current_injuries",
   "planned_week",
