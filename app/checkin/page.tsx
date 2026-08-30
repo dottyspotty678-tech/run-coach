@@ -9,6 +9,7 @@ import { getInjuryHistory, getRecentFeedback, getRunnerContext } from "@/compone
 import { IconChevronLeft } from "@/components/icons";
 import { FeedbackForm, InjuriesForm } from "./checkin-forms";
 import { InjuryHistory } from "./injury-history";
+import { VoiceCheckin } from "./voice-checkin";
 
 // Reads the DB on every request — never serve a stale prerender.
 export const dynamic = "force-dynamic";
@@ -52,7 +53,15 @@ export default async function CheckinPage() {
         <h1 className="display text-[26px] leading-8">Check-in</h1>
       </header>
 
-      {/* How did this week feel? */}
+      {/* Sunday voice meeting (§3.12): the one-stop check-in. */}
+      <section className="flex flex-col gap-2">
+        <h2 className="overline" style={{ color: "var(--ink-2)" }}>
+          Sunday meeting
+        </h2>
+        <VoiceCheckin />
+      </section>
+
+      {/* Manual fallback: the same inputs, typed. */}
       <section className="flex flex-col gap-2">
         <div className="flex items-baseline justify-between">
           <h2 className="overline" style={{ color: "var(--ink-2)" }}>
