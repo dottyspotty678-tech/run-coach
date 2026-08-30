@@ -3,14 +3,17 @@
 import { useState } from "react";
 import type { SessionType } from "@/lib/planTypes";
 import { SESSION_META, SessionBadge } from "@/components/session";
-import { IconTick } from "@/components/icons";
 import { LogSessionButton } from "@/app/activities/log-session";
 import { RouteLine, WaymarkNode } from "./route-node";
 
 // This week (the review surface — brief §2): the route card, read-only.
-// Past days show the planned session alongside a Done/Missed state and what
-// was actually logged; today is ringed in heather; future days of this week
-// read as plain upcoming entries. No batch-edit UI lives here.
+// Collapsed rows are a split-sheet of what actually happened — a past (or
+// today-logged) day shows ONLY the logged activity/activities, a past day
+// with nothing logged shows one quiet line, and a day that hasn't happened
+// yet (or today before anything's logged) still shows the day's instruction.
+// The planned session's full detail (title/detail/why) only appears once a
+// day is expanded, alongside the logged activities for comparison. No
+// batch-edit UI lives here.
 
 export type ReviewRow = {
   date: string;
@@ -18,7 +21,7 @@ export type ReviewRow = {
   dayLabel: string;
   /** "11 Aug" */
   dateLabel: string;
-  /** "15 km" / "45 min" / "Gym" / "Rest" */
+  /** "15 km" / "45 min" / "Gym" / "Rest" — the PLANNED volume. */
   volume: string;
   session_type: SessionType;
   title: string;
@@ -30,9 +33,59 @@ export type ReviewRow = {
   isPast: boolean;
   /** Type-aware completion tick (sessionDone) — unchanged matching rules. */
   done: boolean;
-  /** What was actually logged that day (Strava + manual, merged) — [] when nothing. */
-  actual: { label: string; figures: string }[];
+  /** What was actually logged that day (Strava + manual, merged) — [] when
+   *  nothing (always [] for days later than today). */
+  actual: { label: string; figures: string; color: string; manual: boolean }[];
 };
+
+/** One logged activity: a waymark dot in its matched session colour, the
+ *  label, and its own figures right-aligned — the "row's volume column"
+ *  repeated per line so several activities stack cleanly. */
+function ActualLine({
+  entry,
+  trailing,
+}: {
+  entry: ReviewRow["actual"][number];
+  trailing?: React.ReactNode;
+}) {
+  return (
+    <span className="flex min-w-0 items-center justify-between gap-2">
+      <span className="flex min-w-0 items-center gap-1.5">
+        <span
+          className="h-1.5 w-1.5 shrink-0 rounded-full"
+          style={{ background: entry.color }}
+          aria-hidden="true"
+        />
+        <span className="text-[13px] leading-[17px]" style={{ color: "var(--ink)" }}>
+          {entry.label}
+        </span>
+        {entry.manual && (
+          <span className="shrink-0 text-[10px]" style={{ color: "var(--ink-3)" }}>
+            · manual
+          </span>
+        )}
+        {trailing}
+      </span>
+      {entry.figures && (
+        <span className="tabular shrink-0 pl-2 text-[12.5px] font-medium" style={{ color: "var(--ink-2)" }}>
+          {entry.figures}
+        </span>
+      )}
+    </span>
+  );
+}
+
+/** A colour-only signal always gets a text label alongside (accessibility
+ *  rule) — a small screen-reader-only travel marker, visually just a dot. */
+function TravelDot() {
+  return (
+    <span
+      className="h-1.5 w-1.5 shrink-0 rounded-full"
+      style={{ background: "var(--s-long)" }}
+      aria-label="Travel day"
+    />
+  );
+}
 
 export function ThisWeekReview({ rows }: { rows: ReviewRow[] }) {
   const [expanded, setExpanded] = useState<string | null>(null);
@@ -43,9 +96,21 @@ export function ThisWeekReview({ rows }: { rows: ReviewRow[] }) {
         {rows.map((row) => {
           const isOpen = expanded === row.date;
           const meta = SESSION_META[row.session_type];
-          const showStatus = row.isPast && row.session_type !== "rest";
-          const showActual = row.isPast && row.actual.length > 0;
-          const titleColor = row.isToday ? "var(--ink)" : row.isPast ? "var(--ink-2)" : "var(--ink)";
+          const isRestDay = row.session_type === "rest";
+          const hasActual = row.actual.length > 0;
+
+          // Collapsed state machine (brief §1/§3): a closed day (isPast) or
+          // today-once-something's-logged shows the logged activities only;
+          // a closed day with nothing shows one quiet line; anything else
+          // (future days, or today before it's logged) still shows the plan.
+          const showLogged = hasActual && (row.isPast || row.isToday);
+          const showEmpty = row.isPast && !hasActual;
+          const showPlanned = !showLogged && !showEmpty;
+          // The one nuance worth a signal collapsed: something was logged but
+          // it doesn't match what was planned (sessionDone false) — everything
+          // else (a plain match, or genuinely nothing) is already legible from
+          // the content alone, so no extra chip clutters those cases.
+          const showMismatch = row.isPast && hasActual && !row.done && !isRestDay;
 
           return (
             <li key={row.date} style={{ borderColor: "var(--line)" }}>
@@ -70,58 +135,49 @@ export function ThisWeekReview({ rows }: { rows: ReviewRow[] }) {
                     {row.dateLabel}
                   </span>
                 </span>
-                <span className="flex min-w-0 items-center gap-1.5">
-                  <span className="truncate text-[13px]" style={{ color: titleColor }}>
-                    {row.title}
-                  </span>
-                  {row.done && (
-                    <IconTick size={13} strokeWidth={2.8} className="shrink-0" style={{ color: "var(--ok)" }} />
-                  )}
-                  {row.is_travel_day && (
-                    <span
-                      className="h-1.5 w-1.5 shrink-0 rounded-full"
-                      style={{ background: "var(--s-long)" }}
-                      aria-label="Travel day"
-                    />
-                  )}
-                </span>
-                <span
-                  className="tabular pt-0.5 text-[12.5px] font-medium leading-4"
-                  style={{ color: "var(--ink-2)" }}
-                >
-                  {row.volume}
-                </span>
 
-                {/* The review line: done/missed + what actually happened. */}
-                {(showStatus || showActual) && (
-                  <span className="col-start-3 col-span-2 flex flex-col items-start gap-1 pt-0.5">
-                    {showStatus && (
-                      <span
-                        className="chip"
-                        style={
-                          row.done
-                            ? { color: "var(--ok)", background: "var(--ok-soft)" }
-                            : { color: "var(--danger)", background: "var(--danger-soft)" }
-                        }
-                      >
-                        {row.done ? "Done" : "Missed"}
+                {showPlanned && (
+                  <>
+                    <span className="flex min-w-0 items-center gap-1.5">
+                      {/* Titles are ≤3-word labels by contract — wrap, never clip. */}
+                      <span className="text-[13px] leading-[17px]" style={{ color: "var(--ink)" }}>
+                        {row.title}
                       </span>
-                    )}
-                    {showActual && (
-                      <span className="text-[12px] leading-[16px]" style={{ color: "var(--ink-2)" }}>
-                        Logged:{" "}
-                        {row.actual.map((a, i) => (
-                          <span key={i}>
-                            {i > 0 && "; "}
-                            {a.label}
-                            {a.figures && (
-                              <>
-                                {" "}
-                                <span className="tabular">{a.figures}</span>
-                              </>
-                            )}
-                          </span>
-                        ))}
+                      {row.is_travel_day && <TravelDot />}
+                    </span>
+                    <span
+                      className="tabular pt-0.5 text-[12.5px] font-medium leading-4"
+                      style={{ color: "var(--ink-2)" }}
+                    >
+                      {row.volume}
+                    </span>
+                  </>
+                )}
+
+                {showEmpty && (
+                  <span className="col-span-2 col-start-3 flex items-center gap-1.5 pt-0.5">
+                    <span className="text-[13px]" style={{ color: "var(--ink-3)" }}>
+                      {isRestDay ? "Rest day" : "Nothing logged"}
+                    </span>
+                    {row.is_travel_day && <TravelDot />}
+                  </span>
+                )}
+
+                {showLogged && (
+                  <span className="col-span-2 col-start-3 flex flex-col gap-1">
+                    <ActualLine
+                      entry={row.actual[0]}
+                      trailing={row.is_travel_day ? <TravelDot /> : undefined}
+                    />
+                    {row.actual.slice(1).map((entry, i) => (
+                      <ActualLine key={i} entry={entry} />
+                    ))}
+                    {showMismatch && (
+                      <span
+                        className="chip mt-0.5 w-fit"
+                        style={{ color: "var(--danger)", background: "var(--danger-soft)", fontSize: "10.5px", padding: "2px 8px 2px 6px" }}
+                      >
+                        Missed
                       </span>
                     )}
                   </span>
@@ -133,6 +189,11 @@ export function ThisWeekReview({ rows }: { rows: ReviewRow[] }) {
                   className="flex flex-col gap-1.5 border-t px-4 py-3"
                   style={{ borderColor: "var(--line)" }}
                 >
+                  {hasActual && (
+                    <span className="overline" style={{ color: "var(--ink-2)" }}>
+                      Planned
+                    </span>
+                  )}
                   <div className="flex items-center justify-between gap-2">
                     <SessionBadge type={row.session_type} />
                     {row.duration_min > 0 && (
@@ -146,21 +207,29 @@ export function ThisWeekReview({ rows }: { rows: ReviewRow[] }) {
                   <p className="path-aside text-[12px] leading-[17px]" style={{ color: meta.color }}>
                     <span style={{ color: "var(--ink-2)" }}>{row.why}</span>
                   </p>
+
+                  {hasActual && (
+                    <div className="flex flex-col gap-1 border-t pt-2" style={{ borderColor: "var(--line)" }}>
+                      <span className="overline" style={{ color: "var(--ink-2)" }}>
+                        What you did
+                      </span>
+                      {row.actual.map((entry, i) => (
+                        <ActualLine key={i} entry={entry} />
+                      ))}
+                    </div>
+                  )}
+
                   {/* Past days: backfill a session that never reached Strava.
                       Pre-filled with this date and the planned type; the sheet
                       writes through addManualActivity, which revalidates /plan
-                      so the Done/Missed chip updates on save. */}
+                      so the collapsed row updates on save. */}
                   {row.isPast && (
                     <div className="pt-1.5">
                       <LogSessionButton
                         todayIso={row.date}
                         defaultType={row.session_type === "rest" ? "" : row.session_type}
                         appearance="secondary"
-                        label={
-                          row.actual.length > 0
-                            ? "Log another session"
-                            : `Log a session for ${row.dateLabel}`
-                        }
+                        label={hasActual ? "Log another session" : `Log a session for ${row.dateLabel}`}
                       />
                     </div>
                   )}
