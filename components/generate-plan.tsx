@@ -9,13 +9,26 @@ type Props = {
   hasPlan: boolean;
   /** "primary" = big button (empty states); "compact" = header text action. */
   appearance?: "primary" | "compact";
+  /**
+   * Two-week Plan screen: the Monday (YYYY-MM-DD) this button generates for.
+   * Omit for the default boundary-week behaviour (Dashboard) — the request
+   * body is then unchanged (no JSON body at all).
+   */
+  weekStartDate?: string;
+  /** Copy for the week being (re)generated, e.g. "next week's". Defaults to "this week's". */
+  weekLabel?: string;
 };
 
 /**
  * Generate / regenerate the weekly plan (REQUIREMENTS §3.7): confirm sheet
  * when replacing, in-flight spinner with the 30-second label, error + retry.
  */
-export function GeneratePlanButton({ hasPlan, appearance = "primary" }: Props) {
+export function GeneratePlanButton({
+  hasPlan,
+  appearance = "primary",
+  weekStartDate,
+  weekLabel = "this week's",
+}: Props) {
   const router = useRouter();
   const [confirming, setConfirming] = useState(false);
   const [loading, setLoading] = useState(false);
@@ -26,7 +39,15 @@ export function GeneratePlanButton({ hasPlan, appearance = "primary" }: Props) {
     setLoading(true);
     setError(null);
     try {
-      const res = await fetch("/api/plan/generate", { method: "POST" });
+      const res = await fetch("/api/plan/generate", {
+        method: "POST",
+        ...(weekStartDate
+          ? {
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ week_start_date: weekStartDate }),
+            }
+          : {}),
+      });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
         setError(
@@ -71,7 +92,7 @@ export function GeneratePlanButton({ hasPlan, appearance = "primary" }: Props) {
             ) : hasPlan ? (
               "Regenerate"
             ) : (
-              "Generate this week's plan"
+              `Generate ${weekLabel} plan`
             )}
           </button>
         ) : (
@@ -121,7 +142,7 @@ export function GeneratePlanButton({ hasPlan, appearance = "primary" }: Props) {
             className="relative mx-3 mb-3 w-full max-w-lg rounded-2xl p-5 pb-safe"
             style={{ background: "var(--surface)", border: "1px solid var(--line)" }}
           >
-            <h2 className="text-[17px] font-semibold">Replace this week&apos;s plan?</h2>
+            <h2 className="text-[17px] font-semibold">Replace {weekLabel} plan?</h2>
             <p className="mt-1 text-[14px]" style={{ color: "var(--ink-2)" }}>
               This uses an AI call and clears shopping-list ticks.
             </p>
