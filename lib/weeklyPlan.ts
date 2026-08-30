@@ -406,10 +406,14 @@ async function loadAppliedCheckin(weekStart: string): Promise<AppliedCheckin | n
   if (error || !data || !isRecord(data.proposal_json)) return null;
   const p = data.proposal_json;
   const notes: string[] = [];
+  const weekSet = new Set(weekDates(weekStart));
   if (Array.isArray(p.plan_changes)) {
     for (const c of p.plan_changes) {
       if (!isRecord(c) || typeof c.instruction !== "string" || !c.instruction.trim()) continue;
       const date = typeof c.date === "string" ? c.date : null;
+      // A coach proposal can carry changes for the week in progress too —
+      // those are not THIS week's standing agreements.
+      if (date && !weekSet.has(date)) continue;
       notes.push(date ? `- ${formatDayShort(date)} (${date}): ${c.instruction}` : `- General: ${c.instruction}`);
     }
   }
