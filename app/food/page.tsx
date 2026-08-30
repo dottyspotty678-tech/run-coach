@@ -70,12 +70,16 @@ function AwayMealCard({ meal, isToday }: { meal: AwayMealEntry; isToday: boolean
             </h3>
             <ul className="flex flex-col gap-0.5">
               {meal.ingredients.map((ing) => (
-                <li key={ing.item} className="flex items-baseline justify-between gap-3 text-[14px]">
-                  <span className="min-w-0 flex-1">{ing.item}</span>
-                  {/* Quantities sit on the split board's right column. */}
-                  <span className="tabular shrink-0 text-[12px]" style={{ color: "var(--ink-2)" }}>
-                    {ing.quantity}
-                  </span>
+                <li key={ing.item} className="text-[14px] leading-[20px]">
+                  {/* One flowing line — the quantity always shows in full and
+                      the pair wraps like text, so item/quantity can never
+                      collide however long either gets. */}
+                  {ing.quantity && (
+                    <span className="tabular font-medium" style={{ color: "var(--ink-2)" }}>
+                      {ing.quantity}{" "}
+                    </span>
+                  )}
+                  <span>{ing.item}</span>
                 </li>
               ))}
             </ul>
