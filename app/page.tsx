@@ -6,9 +6,7 @@ import { isMicrosoftConnected } from "@/lib/microsoft";
 import { parseTrainingDays, parseAwayMeals } from "@/lib/planTypes";
 import {
   addDays,
-  boundaryWeekStart,
   formatDayShort,
-  isSundayEvening,
   londonDateOf,
   londonParts,
   mondayOf,
@@ -58,12 +56,10 @@ export default async function DashboardPage() {
   const now = new Date();
   const today = todayISO(now);
   const heroWeekStart = mondayOf(today); // week that contains today
-  const boundaryWeek = boundaryWeekStart(now); // flips to next week Sun 17:00
 
   const supabase = createServiceClient();
   const [
     heroPlan,
-    boundaryPlan,
     activities,
     stravaConnected,
     microsoftConnected,
@@ -75,7 +71,6 @@ export default async function DashboardPage() {
     appliedCheckin,
   ] = await Promise.all([
     getPlanForWeek(heroWeekStart),
-    boundaryWeek === heroWeekStart ? Promise.resolve(null) : getPlanForWeek(boundaryWeek),
     getRecentActivities(28),
     isStravaConnected(),
     isMicrosoftConnected(),
@@ -145,12 +140,6 @@ export default async function DashboardPage() {
   const stravaBroken = !stravaConnected || !!syncStatus.strava?.last_error;
   const microsoftBroken = !microsoftConnected || !!syncStatus.microsoft?.last_error;
 
-  // Sunday evening: the app already shows next week from 17:00; with the v1
-  // week strip gone, a single quiet banner is the one voice for "plan ready".
-  const sundayEvening = isSundayEvening(now);
-  const planReady =
-    sundayEvening && (boundaryWeek === heroWeekStart ? heroPlan : boundaryPlan) !== null;
-
   // Check-in nudge: Sunday, and this week's note is still empty.
   const isSunday = londonParts(now).weekday === 7;
   const hasThisWeeksFeedback = recentFeedback.some(
@@ -190,16 +179,6 @@ export default async function DashboardPage() {
         </header>
 
         {/* Banners — quiet in V2, the hero dominates */}
-        {planReady && (
-          <Banner quiet variant="info" href="/plan" linkLabel="Review it">
-            Next week&apos;s plan is ready
-          </Banner>
-        )}
-        {sundayEvening && !planReady && (
-          <Banner quiet variant="info" href="/plan" linkLabel="Plan tab">
-            Next week&apos;s plan generates this evening
-          </Banner>
-        )}
         {showCheckinNudge && (
           <Banner quiet variant="info" href="/checkin" linkLabel="Check in">
             How did this week feel? A 30-second note shapes next week&apos;s plan
