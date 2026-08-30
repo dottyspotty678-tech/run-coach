@@ -31,10 +31,15 @@ engine updates the training and meal screens.
    confirmation. "Actually, can we…" loops through `submit_checkin` again.
 4. **Apply** — on a clear yes the agent calls `confirm_checkin` →
    `POST /api/checkin/voice/apply`: writes `weekly_feedback` and
-   `runner_context` through the same paths as the typed forms, then (when the
-   proposal carries changes) runs ONE `generateWeeklyPlan` revision with the
-   changes serialised as the revision note and no-cook dates removed from the
-   away-day meal set. Plan and Nutrition screens revalidate.
+   `runner_context` through the same paths as the typed forms, writes the
+   proposal's calendar additions into `calendar_events` (external_id
+   `checkin:…`, replaced wholesale per week so re-runs never leave stale
+   entries; the Microsoft sync's prune skips them, and they show on the
+   Calendar screen with a Check-in chip), then (when the proposal carries
+   changes) runs ONE `generateWeeklyPlan` revision — calendar first, so
+   travel/away logic sees the new events. A revision note against a week with
+   no stored plan folds into the fresh generation rather than being dropped.
+   Plan, Nutrition and Calendar screens revalidate.
 
 Nothing changes without the spoken confirmation; an abandoned call leaves the
 proposal row at `proposed` and touches no data.

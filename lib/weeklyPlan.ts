@@ -926,11 +926,21 @@ export async function generateWeeklyPlan(options?: {
         ),
       };
     } else {
-      console.warn("Revision requested but no stored plan for", context.weekStart, "— generating fresh");
+      console.warn("Revision requested but no stored plan for", context.weekStart, "— generating fresh with the note");
     }
   }
 
-  const basePrompt = buildPrompt(context, revision, checkinBlock);
+  // A revision note against an empty week must not be dropped (voice check-in
+  // bug): fold it into the fresh generation as explicit runner requests.
+  const freshNoteBlock =
+    revisionNote && !revision
+      ? `
+
+RUNNER'S REQUESTS FOR THIS WEEK (no stored plan exists yet — write the fresh plan applying ALL of these):
+${revisionNote}`
+      : "";
+
+  const basePrompt = buildPrompt(context, revision, checkinBlock + freshNoteBlock);
 
   let validated: ValidatedPlan | null = null;
   let lastErrors: string[] = [];

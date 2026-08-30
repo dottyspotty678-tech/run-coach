@@ -161,6 +161,31 @@ const ProposalSchema = z.object({
     .describe(
       "YYYY-MM-DD dates within the plan week the runner said they need no cooked/prepped meal. Empty if none. Resolve day names against the plan week's dates."
     ),
+  calendar_additions: z
+    .array(
+      z.object({
+        date: z.string().describe("YYYY-MM-DD within the plan week."),
+        title: z.string().describe("Short event title in the runner's terms, e.g. 'Client dinner'."),
+        start_time: z
+          .string()
+          .nullable()
+          .describe("24h HH:MM London time, or null for an all-day entry (trips, days away)."),
+        end_time: z
+          .string()
+          .nullable()
+          .describe("24h HH:MM London end time; null when unknown (a sensible default is applied) or all-day."),
+        is_travel: z
+          .boolean()
+          .describe("True for travel/nights away from home — this drives travel-day training and away-day meals."),
+        location: z
+          .string()
+          .nullable()
+          .describe("Place name if the runner said one (e.g. 'Leeds'), else null."),
+      })
+    )
+    .describe(
+      "Concrete commitments from the schedule answers that are NOT already in the calendar context. Only real, dated commitments — never inferred ones. Empty when the calendar already covers everything mentioned."
+    ),
 });
 
 export type CheckinProposal = z.infer<typeof ProposalSchema>;
@@ -193,6 +218,7 @@ RULES:
 - Propose the MINIMUM set of changes the answers actually require — availability clashes move sessions, fatigue or niggles soften them, freed-up days may restore quality. Do not redesign a week that already fits.
 - Injuries: work around anything current (that judgement happens at regeneration — your job is an accurate injuries_current text and, where clearly needed, a protective plan_change).
 - no_cook_dates: only dates the runner explicitly does not need food planned for. These remove that day's prep-ahead meal.
+- calendar_additions: extract each concrete, dated commitment from the schedule answer that the calendar context does not already show (dinners, trips, freed evenings are NOT events — only real commitments). Mark trips/nights away is_travel true with the location if given. These are written to the runner's calendar and feed travel-day and away-day planning, so accuracy beats completeness. Mention in spoken_summary anything you're adding to the calendar.
 - Never invent commitments, sessions or injuries not in the context or answers. Never medical advice, calories or macros.
 - spoken_summary is heard, not read: short sentences, no formatting, UK English, dates like "15 Aug".`;
 }
@@ -228,6 +254,9 @@ export async function analyseCheckin(
       date: c.date && valid.has(c.date) ? c.date : null,
     })),
     no_cook_dates: parsed.no_cook_dates.filter((d) => valid.has(d)),
+    calendar_additions: parsed.calendar_additions.filter(
+      (e) => valid.has(e.date) && e.title.trim() !== ""
+    ),
   };
 
   const supabase = createServiceClient();
@@ -250,6 +279,79 @@ export async function analyseCheckin(
 // Apply — after the runner's spoken confirmation.
 // ---------------------------------------------------------------------------
 
+/** `${date}T${time}` interpreted as Europe/London wall clock → UTC ISO. */
+function londonToUtcIso(date: string, time: string): string {
+  const utcGuess = new Date(`${date}T${time}:00Z`);
+  const fmt = new Intl.DateTimeFormat("en-GB", {
+    timeZone: "Europe/London",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+    hour: "2-digit",
+    minute: "2-digit",
+    hourCycle: "h23",
+  });
+  const p = Object.fromEntries(fmt.formatToParts(utcGuess).map((x) => [x.type, x.value]));
+  const wall = new Date(`${p.year}-${p.month}-${p.day}T${p.hour}:${p.minute}:00Z`);
+  const offsetMs = wall.getTime() - utcGuess.getTime();
+  return new Date(utcGuess.getTime() - offsetMs).toISOString();
+}
+
+/**
+ * Writes the proposal's calendar additions for the week, idempotently: this
+ * week's previous check-in events are replaced wholesale, so a corrected
+ * re-run never leaves stale entries. Runs BEFORE regeneration so the plan
+ * engine sees the new events (travel days, away nights) in its context.
+ */
+async function writeCalendarAdditions(
+  weekStart: string,
+  additions: CheckinProposal["calendar_additions"]
+): Promise<number> {
+  const supabase = createServiceClient();
+  const weekEnd = addDays(weekStart, 7);
+  await supabase
+    .from("calendar_events")
+    .delete()
+    .like("external_id", "checkin:%")
+    .gte("start_time", londonToUtcIso(weekStart, "00:00"))
+    .lt("start_time", londonToUtcIso(weekEnd, "00:00"));
+  if (additions.length === 0) return 0;
+
+  const rows = additions.map((e) => {
+    const allDay = !e.start_time;
+    const start = allDay ? londonToUtcIso(e.date, "00:00") : londonToUtcIso(e.date, e.start_time!);
+    const end = allDay
+      ? londonToUtcIso(addDays(e.date, 1), "00:00")
+      : e.end_time
+        ? londonToUtcIso(e.date, e.end_time)
+        : new Date(new Date(start).getTime() + 2 * 60 * 60 * 1000).toISOString();
+    return {
+      external_id: `checkin:${crypto.randomUUID()}`,
+      title: e.title,
+      start_time: start,
+      end_time: end,
+      is_all_day: allDay,
+      is_travel: e.is_travel,
+      location: e.location,
+    };
+  });
+  const { error } = await supabase.from("calendar_events").upsert(rows);
+  if (error) {
+    // Pre-V2 schema without the location column — same degrade as the
+    // Microsoft sync: retry without it rather than losing the events.
+    console.warn("calendar_events insert with location failed, retrying without:", error.message);
+    const { error: retryError } = await supabase.from("calendar_events").upsert(
+      rows.map((r) => {
+        const { location, ...rest } = r;
+        void location;
+        return rest;
+      })
+    );
+    if (retryError) throw new Error(`Failed to write check-in calendar events: ${retryError.message}`);
+  }
+  return rows.length;
+}
+
 export async function applyCheckin(proposalId: string): Promise<{ spoken_result: string }> {
   const supabase = createServiceClient();
   const { data: row, error } = await supabase
@@ -260,7 +362,10 @@ export async function applyCheckin(proposalId: string): Promise<{ spoken_result:
   if (error || !row) throw new Error("Check-in proposal not found — run submit_checkin again.");
   if (row.status === "applied") return { spoken_result: "Those changes were already applied." };
 
-  const proposal = ProposalSchema.parse(row.proposal_json);
+  // Proposals stored before the calendar feature lack the field — default it.
+  const rawProposal = row.proposal_json as Record<string, unknown>;
+  if (!Array.isArray(rawProposal.calendar_additions)) rawProposal.calendar_additions = [];
+  const proposal = ProposalSchema.parse(rawProposal);
   const done: string[] = [];
 
   // 1. Feedback note for the week just trained (same path as the check-in form).
@@ -283,8 +388,17 @@ export async function applyCheckin(proposalId: string): Promise<{ spoken_result:
     proposal.injuries_current.trim() ? "updated your injury notes" : "recorded you as injury-free"
   );
 
-  // 3. One revision regenerates training + meals when anything changed.
-  const hasChanges = proposal.plan_changes.length > 0 || proposal.no_cook_dates.length > 0;
+  // 3. Calendar first (idempotent per week), so regeneration sees the events.
+  const weekStart = String(row.week_start_date);
+  const eventCount = await writeCalendarAdditions(weekStart, proposal.calendar_additions);
+  if (eventCount > 0) {
+    done.push(`added ${eventCount} event${eventCount === 1 ? "" : "s"} to your calendar`);
+  }
+
+  // 4. One revision regenerates training + meals when anything changed. New
+  // calendar events count as changes — travel/away days shift the plan.
+  const hasChanges =
+    proposal.plan_changes.length > 0 || proposal.no_cook_dates.length > 0 || eventCount > 0;
   if (hasChanges) {
     const lines = proposal.plan_changes.map((c) =>
       c.date ? `- ${formatDayShort(c.date)} (${c.date}): ${c.instruction}` : `- General: ${c.instruction}`
@@ -298,7 +412,7 @@ export async function applyCheckin(proposalId: string): Promise<{ spoken_result:
       revisionNote: `From the Sunday voice check-in — apply ALL of these together:\n${lines.join("\n")}`,
       skipMealDates: proposal.no_cook_dates,
       // Revise the week this proposal was built against, not the boundary week.
-      targetWeekStart: String(row.week_start_date),
+      targetWeekStart: weekStart,
       // The note above IS this proposal — skip the standing-agreement fold.
       fromVoiceCheckin: true,
     });
