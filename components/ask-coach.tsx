@@ -19,7 +19,9 @@ export function AskCoachTile() {
   }
 
   async function close() {
-    if (phase === "live" || phase === "connecting") await end();
+    // Unconditional: end() is a safe no-op with no live session, and closing
+    // must never leave a call (or the mic) running behind the sheet.
+    await end();
     setOpen(false);
   }
 
