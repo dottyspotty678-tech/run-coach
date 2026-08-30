@@ -12,7 +12,12 @@ engine updates the training and meal screens.
    exists (`lib/elevenlabs.ts` creates the agent and its two client tools on
    first use, cached in the `voice_agent` row), builds the briefing
    (`lib/voiceCheckin.ts`: last week's recorded training, current injuries,
-   the stored plan, next week's calendar) and returns a signed WebSocket URL
+   the stored plan, next week's calendar) and returns a signed WebSocket URL.
+   The meeting is always forward-looking: it reviews the week containing
+   today and targets the week AFTER it — deliberately ignoring the app's
+   Sunday 17:00 boundary rule, so a Sunday-afternoon check-in still briefs
+   and plans the week ahead (the apply step passes `targetWeekStart` through
+   to `generateWeeklyPlan` for the same reason)
    plus the briefing as dynamic variables. The API key never leaves the
    server.
 2. **The meeting** — the agent runs three parts in one conversation: how the

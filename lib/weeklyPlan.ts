@@ -59,10 +59,13 @@ type PlanContext = {
   };
 };
 
-async function buildContext(): Promise<PlanContext> {
+async function buildContext(targetWeekStart?: string): Promise<PlanContext> {
   const supabase = createServiceClient();
   const now = new Date();
-  const weekStart = boundaryWeekStart(now);
+  // Voice check-in (§3.12) may override the boundary rule: its meeting always
+  // plans the week AFTER the one containing today, even before the Sunday
+  // 17:00 flip. Everything downstream keys off this one value.
+  const weekStart = targetWeekStart ?? boundaryWeekStart(now);
   const weekDatesList = weekDates(weekStart);
   const weekEnd = addDays(weekStart, 7);
 
@@ -812,8 +815,13 @@ export async function generateWeeklyPlan(options?: {
    * validation, so those days simply carry no meal.
    */
   skipMealDates?: string[];
+  /**
+   * Voice check-in (§3.12): plan/revise this Monday's week instead of the
+   * boundary-rule week. YYYY-MM-DD, must be a Monday.
+   */
+  targetWeekStart?: string;
 }) {
-  const context = await buildContext();
+  const context = await buildContext(options?.targetWeekStart);
   if (options?.skipMealDates?.length) {
     const skip = new Set(options.skipMealDates);
     context.awayDates = context.awayDates.filter((d) => !skip.has(d));
