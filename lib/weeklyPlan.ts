@@ -280,7 +280,7 @@ const WEEKLY_PLAN_TOOL = {
             title: {
               type: "string",
               description:
-                'Short headline, 60 characters or fewer, e.g. "6 x 800 m at 5k effort".',
+                'The session in AT MOST 3 words — "Easy run", "Long ride", "Rest", "Intervals" — a couple more only when one day folds multiple sessions ("Climbing + gym strength"). Never a sentence; specifics (distance, structure, context) belong in detail.',
             },
             detail: {
               type: "string",
@@ -535,6 +535,7 @@ SHOPPING LIST RULES:
 - If there are no away days, return an empty list.
 
 STYLE RULES (strict):
+- title is the session in AT MOST 3 words (a couple more only for a multi-session day). It is a label on a small phone row, never a sentence — everything else goes in detail.
 - UK English throughout: -ise endings, chilli not chili, yoghurt not yogurt. Metric units only (km, min/km).
 - Write any date inside text in the style "15 Aug" — never as an ISO date like 2026-08-15.
 - Coach voice: concise, practical, direct instructions with one line of rationale — like a good club coach texting, not a fitness influencer. No exclamation marks. No emoji.

@@ -270,7 +270,8 @@ export function NextWeekPlan({
                     </span>
                   </span>
                   <span className="flex min-w-0 items-center gap-1.5">
-                    <span className="truncate text-[13px]" style={{ color: "var(--ink-2)" }}>
+                    {/* Titles are ≤3-word labels by contract — wrap, never clip. */}
+                    <span className="text-[13px] leading-[17px]" style={{ color: "var(--ink-2)" }}>
                       {row.title}
                     </span>
                     {row.is_travel_day && (
