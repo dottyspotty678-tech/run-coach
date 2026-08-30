@@ -926,15 +926,30 @@ export async function generateWeeklyPlan(options?: {
   // what was agreed by voice.
   const checkin = options?.fromVoiceCheckin ? null : await loadAppliedCheckin(context.weekStart);
 
-  // Explicit meal nights (call option first, then the standing check-in)
-  // replace the away-derived meal days wholesale — and SUPERSEDE any earlier
-  // no-cook agreement: the runner's latest explicit list is the whole truth
-  // (a stale no-cook fold must not strike freshly requested meal nights).
-  const explicitMealDates = options?.mealDates?.length
+  // Explicit meal nights (call option first, then the standing check-in,
+  // then the stored plan's own snapshot) replace the away-derived meal days
+  // wholesale — and SUPERSEDE any earlier no-cook agreement: the runner's
+  // latest explicit list is the whole truth. The snapshot inheritance is
+  // load-bearing: without it, ANY later regeneration of the week (a title
+  // cleanup, a session tweak) silently reverted to away-day logic and wiped
+  // the requested meals.
+  let explicitMealDates = options?.mealDates?.length
     ? options.mealDates
     : checkin?.mealDates.length
       ? checkin.mealDates
       : null;
+  if (!explicitMealDates) {
+    const { data: prevRow } = await createServiceClient()
+      .from("weekly_plans")
+      .select("input_snapshot_json")
+      .eq("week_start_date", context.weekStart)
+      .maybeSingle();
+    const snap = prevRow?.input_snapshot_json as Record<string, unknown> | null | undefined;
+    if (snap?.mealDatesExplicit === true && Array.isArray(snap.awayDates)) {
+      const inherited = snap.awayDates.filter((d): d is string => typeof d === "string");
+      if (inherited.length > 0) explicitMealDates = inherited;
+    }
+  }
   if (explicitMealDates) {
     const week = new Set(context.weekDatesList);
     context.awayDates = [...new Set(explicitMealDates.filter((d) => week.has(d)))].sort();
