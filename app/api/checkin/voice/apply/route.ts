@@ -17,7 +17,7 @@ export async function POST(request: Request) {
     }
 
     const result = await applyCheckin(proposalId);
-    for (const path of ["/", "/plan", "/food", "/checkin"]) revalidatePath(path);
+    for (const path of ["/", "/plan", "/food", "/checkin", "/calendar"]) revalidatePath(path);
     return NextResponse.json(result);
   } catch (err) {
     console.error("Voice check-in apply failed:", err);

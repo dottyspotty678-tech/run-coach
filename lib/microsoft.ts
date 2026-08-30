@@ -206,7 +206,9 @@ async function doSyncCalendarEvents(): Promise<{ synced: number }> {
   if (!fetchError && stored) {
     const staleIds = stored
       .map((r) => r.external_id as string)
-      .filter((id) => !upstreamIds.has(id));
+      // Voice check-in events (§3.12) are app-owned, not Microsoft's — the
+      // prune must never treat them as cancelled meetings.
+      .filter((id) => !upstreamIds.has(id) && !id.startsWith("checkin:"));
     if (staleIds.length > 0) {
       await supabase.from("calendar_events").delete().in("external_id", staleIds);
     }

@@ -28,14 +28,14 @@ export default async function CalendarPage({
   const today = todayISO();
   const horizon = addDays(today, 14);
 
-  const { data } = connected
-    ? await supabase
-        .from("calendar_events")
-        .select("external_id, title, start_time, end_time, is_all_day, is_travel")
-        .gte("end_time", `${today}T00:00:00Z`)
-        .lt("start_time", `${horizon}T00:00:00Z`)
-        .order("start_time", { ascending: true })
-    : { data: [] };
+  // Always read stored events: voice check-in additions (external_id
+  // "checkin:…") live here too and must show even without Microsoft.
+  const { data } = await supabase
+    .from("calendar_events")
+    .select("external_id, title, start_time, end_time, is_all_day, is_travel")
+    .gte("end_time", `${today}T00:00:00Z`)
+    .lt("start_time", `${horizon}T00:00:00Z`)
+    .order("start_time", { ascending: true });
   const events = (data as CalendarEventRow[] | null) ?? [];
 
   // Group by London day over the next 14 days.
@@ -68,7 +68,7 @@ export default async function CalendarPage({
         <Banner variant="error">Couldn&apos;t connect the calendar ({ms_error}) — try again.</Banner>
       )}
 
-      {!connected ? (
+      {!connected && (
         <section className="card flex flex-col items-start gap-3 p-5">
           <h2 className="text-[17px] font-semibold">Connect your calendar</h2>
           <p className="text-[14px]" style={{ color: "var(--ink-2)" }}>
@@ -78,11 +78,15 @@ export default async function CalendarPage({
             Open Settings
           </Link>
         </section>
-      ) : days.length === 0 ? (
-        <section className="card flex flex-col items-start gap-3 p-5">
-          <p className="text-[15px] font-medium">No events in the next 14 days</p>
-          <CalendarSyncButton />
-        </section>
+      )}
+
+      {days.length === 0 ? (
+        connected && (
+          <section className="card flex flex-col items-start gap-3 p-5">
+            <p className="text-[15px] font-medium">No events in the next 14 days</p>
+            <CalendarSyncButton />
+          </section>
+        )
       ) : (
         <section className="flex flex-col gap-3">
           {days.map((day) => (
@@ -107,6 +111,14 @@ export default async function CalendarPage({
                     <span className="min-w-0 flex-1 truncate text-[14px] font-medium">
                       {e.title ?? "(untitled)"}
                     </span>
+                    {e.external_id.startsWith("checkin:") && (
+                      <span
+                        className="chip shrink-0"
+                        style={{ color: "var(--accent)", background: "var(--accent-soft)" }}
+                      >
+                        Check-in
+                      </span>
+                    )}
                     {e.is_travel && (
                       <span className="chip shrink-0" style={{ color: "var(--s-long)", background: "var(--s-long-soft)" }}>
                         Travel
