@@ -34,11 +34,11 @@ import { SESSION_META, SessionBadge } from "@/components/session";
 import { Banner } from "@/components/banner";
 import { PullRefresh } from "@/components/pull-refresh";
 import { LogSessionButton } from "@/app/activities/log-session";
+import { AskCoachTile } from "@/components/ask-coach";
 import {
   IconActivity,
   IconChevronRight,
   IconFlag,
-  IconPencil,
   IconTick,
 } from "@/components/icons";
 
@@ -367,12 +367,7 @@ export default async function DashboardPage() {
               )}
             </span>
           </Link>
-          <Link href="/plan?edit=1" className="card flex min-h-[64px] items-center gap-2.5 px-3.5 py-3">
-            <span className="shrink-0" style={{ color: "var(--accent)" }}>
-              <IconPencil size={18} strokeWidth={2} />
-            </span>
-            <span className="text-[14px] font-semibold leading-[18px]">Update training plan</span>
-          </Link>
+          <AskCoachTile />
         </section>
       </main>
     </PullRefresh>

@@ -8,7 +8,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 const ELEVENLABS_BASE = "https://api.elevenlabs.io";
 
 /** Bump when the agent prompt/tools change so the stored agent is recreated. */
-const AGENT_CONFIG_VERSION = 3;
+const AGENT_CONFIG_VERSION = 4;
 
 function apiKey(): string {
   const key = process.env.ELEVENLABS_API_KEY;
@@ -46,7 +46,7 @@ const CLIENT_TOOLS = [
     type: "client",
     name: "submit_checkin",
     description:
-      "Send the runner's complete check-in answers to the coaching engine for analysis. Call this once all three parts of the meeting are answered (or the runner declines a part). The response contains a spoken summary of the proposed changes to next week's training and meals — read it back to the runner and ask them to confirm. If the runner wants something different, call this tool again with updated answers.",
+      "Send the runner's answers to the coaching engine for analysis. In a full check-in, call it once all three parts are answered (or declined). In a coach session, call it once the runner has asked for concrete changes (sessions, feelings, injuries, meals) — pure questions never need this tool. The response contains a spoken summary of the proposed changes to next week's training and meals — read it back to the runner and ask them to confirm. If the runner wants something different, call this tool again with updated answers.",
     expects_response: true,
     response_timeout_secs: 120,
     parameters: {
@@ -105,11 +105,13 @@ Last week's training, as recorded:
 Current injuries the planner is working around: {{current_injuries}}
 Next week's plan as it currently stands:
 {{planned_week}}
-Next week's calendar (already known — only ask about what is NOT here):
+The week's calendar (already known — only ask about what is NOT here):
 {{next_week_schedule}}
+Race goal and phase: {{race_goal}}
 
 MEETING MODE: {{meeting_mode}}
 - "full": run the three parts below, in order.
+- "coach": a free-form session — no script. The runner opened it from the Dashboard; the context above covers THIS week. Follow their lead: they may ask you to revise upcoming sessions, tell you how they're feeling, report a niggle or injury, adjust meal nights, or just ask questions about training, nutrition or the build to their race. Answer questions directly and conversationally from the context and sound coaching knowledge — evidence-based, qualitative (never calories or macros), suggest a physio for anything worse than a niggle. When they ask for CHANGES (sessions, feelings that should soften the week, injuries, meals), gather what's needed, then call submit_checkin exactly as in a full meeting — restate unchanged areas faithfully from the context, prefix training_feedback with "unchanged: " if they didn't talk about how the week felt, put requested session changes in schedule_notes, put meal changes in meal_nights or "unchanged". Read the summary back, confirm, then confirm_checkin. Changes only ever land through that tool flow. A questions-only session needs no tools at all — wrap up when they're done.
 - "revise": this week's check-in is already confirmed. Do NOT re-run the three parts. Instead, in two or three sentences read back what's on file — the recorded feedback for last week ({{recorded_feedback}}), the current injuries, and the shape of next week's plan from the context above — then ask what they'd like to change. Gather only the changes, then call submit_checkin with the COMPLETE set of answers: restate the unchanged areas faithfully from the context in their fields, fold the requested changes into the relevant fields, and prefix training_feedback with "unchanged: " if the runner didn't revisit how the week felt. Everything after submit_checkin works exactly as in a full meeting.
 
 FULL MEETING — THREE PARTS, IN ORDER:
@@ -131,6 +133,7 @@ const FIRST_MESSAGE = "{{greeting}}";
 /** Dynamic variables the start route must supply for every conversation. */
 export const DYNAMIC_VARIABLE_KEYS = [
   "today",
+  "race_goal",
   "greeting",
   "meeting_mode",
   "recorded_feedback",
