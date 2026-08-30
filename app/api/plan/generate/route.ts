@@ -53,11 +53,13 @@ export async function POST(request: Request) {
   let revisionNote: string | undefined;
   let applyPending = false;
   let weekStartDateInput: string | undefined;
+  let mealDates: string[] | undefined;
   try {
     const body = (await request.json()) as {
       revision_note?: unknown;
       apply_pending?: unknown;
       week_start_date?: unknown;
+      meal_dates?: unknown;
     };
     if (typeof body?.revision_note === "string" && body.revision_note.trim()) {
       revisionNote = body.revision_note.trim().slice(0, 2000);
@@ -65,6 +67,12 @@ export async function POST(request: Request) {
     applyPending = body?.apply_pending === true;
     if (typeof body?.week_start_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.week_start_date)) {
       weekStartDateInput = mondayOf(body.week_start_date);
+    }
+    // §3.12: explicit meal nights — meals on exactly these dates.
+    if (Array.isArray(body?.meal_dates)) {
+      mealDates = body.meal_dates
+        .filter((d): d is string => typeof d === "string" && /^\d{4}-\d{2}-\d{2}$/.test(d))
+        .slice(0, 7);
     }
   } catch {
     // No/invalid JSON body — a normal generation.
@@ -160,6 +168,7 @@ export async function POST(request: Request) {
       syncNotes,
       revisionNote: effectiveRevisionNote,
       ...(weekStartDateInput ? { targetWeekStart: weekStartDateInput } : {}),
+      ...(mealDates?.length ? { mealDates } : {}),
     });
 
     // Apply flow step (c): clear the queue on success ONLY — a failed
