@@ -8,7 +8,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 const ELEVENLABS_BASE = "https://api.elevenlabs.io";
 
 /** Bump when the agent prompt/tools change so the stored agent is recreated. */
-const AGENT_CONFIG_VERSION = 5;
+const AGENT_CONFIG_VERSION = 6;
 
 function apiKey(): string {
   const key = process.env.ELEVENLABS_API_KEY;
@@ -149,6 +149,15 @@ function agentPayload(toolIds: string[]) {
   return {
     name: "Run Coach — Sunday check-in",
     conversation_config: {
+      // Orphaned-session guards: a call nobody is talking to hangs itself up
+      // after 60s of silence (ElevenLabs default is -1 = nag forever), and no
+      // call outlives 15 minutes.
+      turn: {
+        silence_end_call_timeout: 60,
+      },
+      conversation: {
+        max_duration_seconds: 900,
+      },
       agent: {
         first_message: FIRST_MESSAGE,
         language: "en",
