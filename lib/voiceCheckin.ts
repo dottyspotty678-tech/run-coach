@@ -13,7 +13,7 @@ import {
   isRun,
 } from "@/components/data";
 import {
-  boundaryWeekStart,
+  addDays,
   formatDateShort,
   formatDayShort,
   londonDateOf,
@@ -43,8 +43,12 @@ export type VoiceBriefing = {
 
 export async function buildVoiceBriefing(now = new Date()): Promise<VoiceBriefing> {
   const today = todayISO(now);
-  const planWeek = boundaryWeekStart(now);
   const describedWeek = mondayOf(today);
+  // The meeting is always forward-looking: it reviews the week containing
+  // today and plans the week AFTER it — regardless of the Sunday 17:00
+  // boundary rule the rest of the app uses (a 15:00 Sunday check-in must not
+  // brief on the week that is already over).
+  const planWeek = addDays(describedWeek, 7);
   const planDates = weekDates(planWeek);
 
   const [activities, context, plan, events] = await Promise.all([
@@ -293,6 +297,8 @@ export async function applyCheckin(proposalId: string): Promise<{ spoken_result:
     await generateWeeklyPlan({
       revisionNote: `From the Sunday voice check-in — apply ALL of these together:\n${lines.join("\n")}`,
       skipMealDates: proposal.no_cook_dates,
+      // Revise the week this proposal was built against, not the boundary week.
+      targetWeekStart: String(row.week_start_date),
     });
     done.push("updated next week's training and meal plan");
   }
