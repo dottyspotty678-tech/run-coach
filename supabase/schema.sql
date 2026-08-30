@@ -207,3 +207,38 @@ alter table pending_changes enable row level security;
 
 drop policy if exists "authenticated full access" on pending_changes;
 create policy "authenticated full access" on pending_changes for all using (auth.role() = 'authenticated');
+
+-- ---------------------------------------------------------------------------
+-- Voice check-in migration (run this block in the Supabase SQL Editor)
+-- Idempotent: safe to run more than once.
+-- ---------------------------------------------------------------------------
+
+-- §3.12: the ElevenLabs agent this deployment created (singleton). Recreated
+-- automatically whenever lib/elevenlabs.ts's config hash changes.
+create table if not exists voice_agent (
+  id boolean primary key default true check (id = true), -- singleton row
+  agent_id text not null,
+  config_hash text not null,
+  updated_at timestamptz not null default now()
+);
+
+-- §3.12: one row per submit_checkin proposal — the meeting's answers, the
+-- Claude proposal read back to the runner, and whether it was applied.
+create table if not exists voice_checkins (
+  id uuid primary key default gen_random_uuid(),
+  week_start_date date not null,   -- plan week the changes target
+  described_week date not null,    -- week the feedback note describes
+  answers_json jsonb not null,
+  proposal_json jsonb not null,
+  status text not null default 'proposed' check (status in ('proposed', 'applied', 'discarded')),
+  applied_at timestamptz,
+  created_at timestamptz not null default now()
+);
+
+alter table voice_agent enable row level security;
+alter table voice_checkins enable row level security;
+
+drop policy if exists "authenticated full access" on voice_agent;
+create policy "authenticated full access" on voice_agent for all using (auth.role() = 'authenticated');
+drop policy if exists "authenticated full access" on voice_checkins;
+create policy "authenticated full access" on voice_checkins for all using (auth.role() = 'authenticated');

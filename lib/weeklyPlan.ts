@@ -806,8 +806,18 @@ export async function generateWeeklyPlan(options?: {
    * keep-stable instruction, and the note is stored on the resulting row.
    */
   revisionNote?: string;
+  /**
+   * Voice check-in (§3.12): away dates the runner needs no prepped meal for
+   * (eating out, catered). Removed from the away set BEFORE prompting and
+   * validation, so those days simply carry no meal.
+   */
+  skipMealDates?: string[];
 }) {
   const context = await buildContext();
+  if (options?.skipMealDates?.length) {
+    const skip = new Set(options.skipMealDates);
+    context.awayDates = context.awayDates.filter((d) => !skip.has(d));
+  }
 
   // U7: load the plan being revised. If none exists (note sent against an
   // empty week) fall back to a normal generation — the note still applies as
