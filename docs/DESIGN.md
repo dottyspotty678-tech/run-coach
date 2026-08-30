@@ -153,11 +153,13 @@ Headings carry −0.01em tracking globally.
 | Dinner card (Dashboard) | rendered in `app/page.tsx` | V2: shown ONLY when today is an away day with a planned prep-ahead meal; links to Nutrition. Home days show no meal card. |
 | Volume lookback card | rendered in `app/page.tsx` | V2: 7-day running km (run-only, U1) in fingerpost lettering + planned-sessions-done summary; opens `/activities`. |
 | Quick actions grid | rendered in `app/page.tsx` | V2: 2x2 — Log a session (sheet), Add a goal race (`/settings#race`), Add a check-in (`/checkin`), Update training plan (`/plan?edit=1`). |
-| Plan route card | `app/plan/plan-table.tsx` | V3 signature: node \| date \| detail \| volume rows threaded by the dashed route line; nodes are session-coloured discs, today ringed in accent; today first then forward (past days dimmed at the end); tap to expand the full session card. Volume = "15 km" / "45 min" / "Gym" / "Rest" in the utility mono. |
-| Plan edit mode | `app/plan/plan-table.tsx` | V2 behaviour unchanged: per-row session-type quick-pick + free-text (`addPendingChange`), whole-week instruction, inline check-in note (`savePendingCheckin`), pending list with per-item Remove and Clear all, ONE "Apply changes — regenerate" → POST `{apply_pending: true}` (~30 s state, 429/500 surfaced). Deep-linked from the Dashboard via `?edit=1`. |
+| Plan week toggle | `app/plan/week-toggle.tsx` | V3: a segmented control — "This week" / "Next week", 44 px targets, each segment carries a waymark dot (accent when active, like the tab bar's active marker). Opens on This week; `?edit=1` opens on Next week. Client-side only — both weeks are fetched server-side in `app/plan/page.tsx` and handed down as already-rendered content; the inactive panel is `hidden`, not unmounted, so Next week's edit state survives a glance at This week. |
+| This week review | `app/plan/this-week-review.tsx` | V3: the route card as a REVIEW surface, read-only, chronological Monday→Sunday (no reordering). Past days show the planned session, a Done/Missed chip (colour + text, from the unchanged `sessionDone`/`completedCategories` matching in `components/data.ts`) and a "Logged: …" line built from the merged Strava/manual activity stream (type, distance, duration) — shown even when it disagrees with the plan, so a mismatch is visible rather than hidden. Rest days show no Done/Missed chip (nothing to complete) but still surface a Logged line if cross-training happened. Today is ringed in accent, no completion chip (the day isn't over). Future days render as plain upcoming entries. No edit affordances anywhere in this view. |
+| Next week plan | `app/plan/next-week-plan.tsx` | V3: the route card as the PLANNING surface — the only place batch-edit lives. Same node \| date \| detail \| volume rows as before, tap to expand the full session card. Edit mode (ported from the retired single-week `plan-table.tsx`, behaviour unchanged): per-row session-type quick-pick + free-text (`addPendingChange`), whole-week instruction, inline check-in note (`savePendingCheckin`), pending list with per-item Remove and Clear all, ONE "Apply changes — regenerate" → `POST /api/plan/generate` `{ apply_pending: true, week_start_date: <next Monday> }` (~30 s state, 429/500 surfaced). Deep-linked from the Dashboard via `?edit=1` (opens on the Next week tab with edit mode already on). Empty state (no plan yet): "generates automatically on Sunday evening… you can also generate it now" + `GeneratePlanButton`. |
+| Route node / route line | `app/plan/route-node.tsx` | Shared furniture behind both list components above: the dashed `.route-line` segment and the session-coloured `WaymarkNode` disc (ringed in accent for today) — kept in one file so the two lists stay visually one system. |
 | Away meal card | `app/food/page.tsx` | V2: `<details>` row — date + recipe + prep time, expanding to ingredients (item \| quantity) and method. |
 | Shopping list | `app/food/shopping-list.tsx` | Client; grouped by category with Item \| Volume columns (`quantity_note` right-aligned); localStorage ticks keyed by week + generated_at; ticks are waymark discs; checked sink + strike; "Reset ticks". |
-| Generate/regenerate | `components/generate-plan.tsx` | Confirm sheet when replacing; in-flight spinner label "Planning your week… (about 30 seconds)"; error + retry. |
+| Generate/regenerate | `components/generate-plan.tsx` | Confirm sheet when replacing; in-flight spinner label "Planning your week… (about 30 seconds)"; error + retry. Optional `weekStartDate`/`weekLabel` props (added for the Plan screen's two weeks) put an explicit `week_start_date` on the `POST` body and retarget the copy ("Generate next week's plan" / "Replace next week's plan?"); omitted (Dashboard, and everywhere pre-V3), the request is byte-identical to before — no body at all. |
 | Sync button(s) | `app/settings/connections.tsx`, secondary-screen sync buttons | Combined sync = both providers, independent per-provider results. |
 | Tag input | `app/settings/food-form.tsx` | Type + add, tap to remove; writes hidden comma-joined field (keeps server-action field names). |
 | Stepper | `app/settings/food-form.tsx` | Household size 1–6. |
@@ -180,7 +182,8 @@ the round-2 Suggest-changes card.
 Bottom tab bar (always visible except on `/pin`):
 
 1. **Dashboard** — `/` (PWA start URL)
-2. **Plan** — `/plan` (route card + edit mode; `?edit=1` opens edit mode directly)
+2. **Plan** — `/plan` (V3: a two-week toggle — This week review, Next week planning + edit
+   mode; `?edit=1` opens on the Next week tab with edit mode already on)
 3. **Nutrition** — `/food` (away-day recipes, then the shopping list)
 4. **Settings** — `/settings`
 
@@ -409,6 +412,16 @@ Contract for the v2 screens (docs/REDESIGN-V2.md). Same style as §7–§8c.
   limits and generate-then-swap as every manual generation; response is the
   generation response plus `applied: true`. A plain `revision_note` in the
   same body is folded in as an extra general instruction.
+- V3 (two-week Plan screen): the body also accepts an optional
+  `week_start_date` (`YYYY-MM-DD`, clamped to its Monday via `mondayOf`).
+  When present it is used both to load/apply that week's pending changes
+  (instead of the boundary week) and as `targetWeekStart` into
+  `generateWeeklyPlan` (an option `lib/weeklyPlan.ts` already exposed for the
+  voice check-in). Omitted, behaviour is byte-identical to before — the
+  boundary week, exactly as the Dashboard and cron paths still call it. The
+  Plan screen sends next week's Monday on every Next week generate/apply
+  call (and this week's Monday on This week's regenerate action, since after
+  Sunday 17:00 the boundary week and "this week" diverge).
 
 ## 9. States checklist (stress-tester map)
 

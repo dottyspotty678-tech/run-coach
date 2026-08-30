@@ -45,24 +45,38 @@ export async function POST(request: Request) {
   // generate-then-swap. No body (the plain Generate button) = fresh plan.
   // V2 (§Screen 2): { apply_pending: true } instead applies the queued batch
   // of pending changes in ONE revision call, clearing the queue on success.
+  // Two-week Plan screen: an optional `week_start_date` (YYYY-MM-DD, clamped
+  // to its Monday) targets that week explicitly — the Plan screen sends next
+  // week's Monday for the planning-surface (Next week) generate/apply calls.
+  // Omitted, this is byte-identical to the previous behaviour: pending
+  // changes load for (and generation targets) the boundary week.
   let revisionNote: string | undefined;
   let applyPending = false;
+  let weekStartDateInput: string | undefined;
   try {
-    const body = (await request.json()) as { revision_note?: unknown; apply_pending?: unknown };
+    const body = (await request.json()) as {
+      revision_note?: unknown;
+      apply_pending?: unknown;
+      week_start_date?: unknown;
+    };
     if (typeof body?.revision_note === "string" && body.revision_note.trim()) {
       revisionNote = body.revision_note.trim().slice(0, 2000);
     }
     applyPending = body?.apply_pending === true;
+    if (typeof body?.week_start_date === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.week_start_date)) {
+      weekStartDateInput = mondayOf(body.week_start_date);
+    }
   } catch {
     // No/invalid JSON body — a normal generation.
   }
+  const targetWeekStart = weekStartDateInput ?? boundaryWeekStart(new Date());
 
   try {
     // Load the pending batch up front — an empty queue is a 400, not a spent
     // generation.
     let pending: PendingChangesRow | null = null;
     if (applyPending) {
-      pending = await getPendingChanges(boundaryWeekStart(new Date()));
+      pending = await getPendingChanges(targetWeekStart);
       if (!pending || (pending.changes.length === 0 && !pending.checkin_note.trim())) {
         return NextResponse.json({ error: "No pending changes to apply." }, { status: 400 });
       }
@@ -142,7 +156,11 @@ export async function POST(request: Request) {
     // Apply flow step (b): ONE regeneration through the revise semantics,
     // with the whole batch serialised into the revision context.
     const effectiveRevisionNote = pending ? serialisePending(pending, revisionNote) : revisionNote;
-    const result = await generateWeeklyPlan({ syncNotes, revisionNote: effectiveRevisionNote });
+    const result = await generateWeeklyPlan({
+      syncNotes,
+      revisionNote: effectiveRevisionNote,
+      ...(weekStartDateInput ? { targetWeekStart: weekStartDateInput } : {}),
+    });
 
     // Apply flow step (c): clear the queue on success ONLY — a failed
     // generation throws before this line and the batch survives for a retry.

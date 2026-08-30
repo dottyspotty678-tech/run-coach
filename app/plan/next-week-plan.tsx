@@ -6,25 +6,27 @@ import { useFormStatus } from "react-dom";
 import type { SessionType } from "@/lib/planTypes";
 import type { PendingChange } from "@/components/data";
 import { SESSION_META, SessionBadge } from "@/components/session";
-import { IconTick } from "@/components/icons";
 import {
   addPendingChange,
   clearPendingChanges,
   removePendingChange,
   savePendingCheckin,
 } from "@/app/settings/actions";
+import { RouteLine, WaymarkNode } from "./route-node";
 
-// V2 Plan screen (docs/REDESIGN-V2.md §Screen 2): compact table
-// (Date | Volume | Detail), today first, tap a row to expand the full session
-// card. Edit mode queues PENDING CHANGES (server-stored, survive navigation)
-// plus an inline check-in note, applied in ONE regeneration. This replaces the
-// old "Suggest changes" card — one editing concept.
+// Next week (the planning surface — brief §3): the route card in edit mode
+// only lives here. Ported from the V2 single-week plan-table.tsx: queued
+// PENDING CHANGES (server-stored, survive navigation), an inline check-in
+// note, one "Apply changes" regeneration. Every form/call below carries
+// `weekStart` (next week's Monday) explicitly, per the settings actions'
+// existing `week_start_date` field and the generate route's new
+// `week_start_date` option.
 
-export type PlanTableRow = {
+export type PlanRow = {
   date: string;
-  /** "Today" / "Tomorrow" / "Thu" */
+  /** "Tomorrow" (only possible on a Sunday) / "Monday" */
   dayLabel: string;
-  /** "28 Aug" */
+  /** "18 Aug" */
   dateLabel: string;
   /** "15 km" / "45 min" / "Gym" / "Rest" */
   volume: string;
@@ -34,9 +36,6 @@ export type PlanTableRow = {
   why: string;
   duration_min: number;
   is_travel_day: boolean;
-  isToday: boolean;
-  isPast: boolean;
-  done: boolean;
 };
 
 const TYPE_CHOICES: SessionType[] = [
@@ -160,14 +159,14 @@ function ChangeForm({
   );
 }
 
-export function PlanTable({
+export function NextWeekPlan({
   rows,
   weekStart,
   pendingChanges,
   checkinNote,
   initialEdit,
 }: {
-  rows: PlanTableRow[];
+  rows: PlanRow[];
   weekStart: string;
   pendingChanges: PendingChange[];
   checkinNote: string;
@@ -193,7 +192,7 @@ export function PlanTable({
       const res = await fetch("/api/plan/generate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ apply_pending: true }),
+        body: JSON.stringify({ apply_pending: true, week_start_date: weekStart }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -224,10 +223,10 @@ export function PlanTable({
 
   return (
     <section className="flex flex-col gap-2">
-      {/* Table header row: title + edit toggle */}
-      <div className="flex items-baseline justify-between">
+      {/* Section header: title + edit toggle */}
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
         <h2 className="overline" style={{ color: "var(--ink-2)" }}>
-          This week
+          Next week&apos;s sessions
         </h2>
         <button
           type="button"
@@ -236,7 +235,7 @@ export function PlanTable({
             setChangeFor(null);
             setApplyError(null);
           }}
-          className="min-h-[36px] text-[13px] font-semibold"
+          className="min-h-[44px] text-[13px] font-semibold"
           style={{ color: "var(--accent)" }}
         >
           {editMode ? "Done" : "Edit"}
@@ -244,8 +243,8 @@ export function PlanTable({
       </div>
 
       {/* The route card: the week as a footpath — a dashed route line
-          threading round waymark nodes, one per day, today ringed in
-          heather. Colour lives in the node and the badge. */}
+          threading round waymark nodes, one per day. Colour lives in the
+          node and the badge. */}
       <div className="card overflow-hidden">
         <ul className="divide-y" style={{ borderColor: "var(--line)" }}>
           {rows.map((row) => {
@@ -258,33 +257,12 @@ export function PlanTable({
                   type="button"
                   onClick={() => setExpanded(isOpen ? null : row.date)}
                   aria-expanded={isOpen}
-                  className="relative grid w-full grid-cols-[24px_76px_1fr_auto] items-center gap-2 py-3 pl-4 pr-4 text-left"
-                  style={{
-                    opacity: row.isPast && !row.isToday ? 0.55 : 1,
-                  }}
+                  className="relative grid w-full grid-cols-[24px_64px_1fr_auto] items-center gap-2 py-3 pl-4 pr-4 text-left"
                 >
-                  {/* Route line segment — joins across rows into one path. */}
-                  <span
-                    aria-hidden="true"
-                    className="route-line absolute bottom-0 left-[27px] top-0"
-                  />
-                  {/* Waymark node in the session's colour. */}
-                  <span className="relative flex items-center justify-center">
-                    <span
-                      className="h-3 w-3 rounded-full"
-                      style={{
-                        background: meta.color,
-                        boxShadow: row.isToday
-                          ? "0 0 0 2px var(--surface), 0 0 0 4px var(--accent)"
-                          : "0 0 0 2px var(--surface)",
-                      }}
-                    />
-                  </span>
+                  <RouteLine />
+                  <WaymarkNode color={meta.color} />
                   <span className="min-w-0">
-                    <span
-                      className={`block text-[13px] leading-4 ${row.isToday ? "overline" : "font-semibold"}`}
-                      style={{ color: row.isToday ? "var(--accent)" : "var(--ink)" }}
-                    >
+                    <span className="block text-[13px] font-semibold leading-4" style={{ color: "var(--ink)" }}>
                       {row.dayLabel}
                     </span>
                     <span className="tabular block text-[10.5px]" style={{ color: "var(--ink-3)" }}>
@@ -295,9 +273,6 @@ export function PlanTable({
                     <span className="truncate text-[13px]" style={{ color: "var(--ink-2)" }}>
                       {row.title}
                     </span>
-                    {row.done && (
-                      <IconTick size={13} strokeWidth={2.8} className="shrink-0" style={{ color: "var(--ok)" }} />
-                    )}
                     {row.is_travel_day && (
                       <span
                         className="h-1.5 w-1.5 shrink-0 rounded-full"
