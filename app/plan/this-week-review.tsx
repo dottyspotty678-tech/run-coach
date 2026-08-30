@@ -41,13 +41,7 @@ export type ReviewRow = {
 /** One logged activity: a waymark dot in its matched session colour, the
  *  label, and its own figures right-aligned — the "row's volume column"
  *  repeated per line so several activities stack cleanly. */
-function ActualLine({
-  entry,
-  trailing,
-}: {
-  entry: ReviewRow["actual"][number];
-  trailing?: React.ReactNode;
-}) {
+function ActualLine({ entry }: { entry: ReviewRow["actual"][number] }) {
   return (
     <span className="flex min-w-0 items-center justify-between gap-2">
       <span className="flex min-w-0 items-center gap-1.5">
@@ -59,12 +53,6 @@ function ActualLine({
         <span className="text-[13px] leading-[17px]" style={{ color: "var(--ink)" }}>
           {entry.label}
         </span>
-        {entry.manual && (
-          <span className="shrink-0 text-[10px]" style={{ color: "var(--ink-3)" }}>
-            · manual
-          </span>
-        )}
-        {trailing}
       </span>
       {entry.figures && (
         <span className="tabular shrink-0 pl-2 text-[12.5px] font-medium" style={{ color: "var(--ink-2)" }}>
@@ -165,21 +153,9 @@ export function ThisWeekReview({ rows }: { rows: ReviewRow[] }) {
 
                 {showLogged && (
                   <span className="col-span-2 col-start-3 flex flex-col gap-1">
-                    <ActualLine
-                      entry={row.actual[0]}
-                      trailing={row.is_travel_day ? <TravelDot /> : undefined}
-                    />
-                    {row.actual.slice(1).map((entry, i) => (
+                    {row.actual.map((entry, i) => (
                       <ActualLine key={i} entry={entry} />
                     ))}
-                    {showMismatch && (
-                      <span
-                        className="chip mt-0.5 w-fit"
-                        style={{ color: "var(--danger)", background: "var(--danger-soft)", fontSize: "10.5px", padding: "2px 8px 2px 6px" }}
-                      >
-                        Missed
-                      </span>
-                    )}
                   </span>
                 )}
               </button>
@@ -190,8 +166,15 @@ export function ThisWeekReview({ rows }: { rows: ReviewRow[] }) {
                   style={{ borderColor: "var(--line)" }}
                 >
                   {hasActual && (
-                    <span className="overline" style={{ color: "var(--ink-2)" }}>
-                      Planned
+                    <span className="flex items-center gap-2">
+                      <span className="overline" style={{ color: "var(--ink-2)" }}>
+                        Planned
+                      </span>
+                      {showMismatch && (
+                        <span className="chip" style={{ color: "var(--danger)", background: "var(--danger-soft)" }}>
+                          Missed
+                        </span>
+                      )}
                     </span>
                   )}
                   <div className="flex items-center justify-between gap-2">
