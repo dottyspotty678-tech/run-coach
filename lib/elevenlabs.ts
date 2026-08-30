@@ -82,7 +82,8 @@ const CLIENT_TOOLS = [
     description:
       "Apply the proposed changes after the runner has explicitly confirmed them. Only call this with the proposal_id from the most recent submit_checkin response, and only after a clear yes. The response confirms what was updated — relay it briefly and close the meeting.",
     expects_response: true,
-    response_timeout_secs: 180,
+    // ElevenLabs caps client-tool timeouts at 120 s.
+    response_timeout_secs: 120,
     parameters: {
       type: "object",
       properties: {
