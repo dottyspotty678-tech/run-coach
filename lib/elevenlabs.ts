@@ -8,7 +8,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 const ELEVENLABS_BASE = "https://api.elevenlabs.io";
 
 /** Bump when the agent prompt/tools change so the stored agent is recreated. */
-const AGENT_CONFIG_VERSION = 2;
+const AGENT_CONFIG_VERSION = 3;
 
 function apiKey(): string {
   const key = process.env.ELEVENLABS_API_KEY;
@@ -65,15 +65,15 @@ const CLIENT_TOOLS = [
         schedule_notes: {
           type: "string",
           description:
-            "Part 2 — everything about next week's schedule that is not already in the calendar: extra commitments, freed-up days, travel changes.",
+            "Part 2 — everything about next week's schedule that is not already in the calendar: extra commitments, freed-up days, and ALL travel or nights away (where and when).",
         },
-        no_cook_days: {
+        meal_nights: {
           type: "string",
           description:
-            "Part 3 — days next week the runner does not need to cook (eating out, catered, etc.), or 'none'. Use day names or dates as the runner gave them.",
+            "Part 3 — which nights next week the runner needs a prepped dinner planned, and any nights they explicitly do not need to cook. In the runner's words, e.g. 'recipes for Tuesday and Wednesday only' or 'just the away nights, no dinner Friday'.",
         },
       },
-      required: ["training_feedback", "injury_update", "schedule_notes", "no_cook_days"],
+      required: ["training_feedback", "injury_update", "schedule_notes", "meal_nights"],
     },
   },
   {
@@ -114,8 +114,8 @@ MEETING MODE: {{meeting_mode}}
 
 FULL MEETING — THREE PARTS, IN ORDER:
 Part 1 — the week just gone. Open by quickly summarising last week's training from the context (a sentence or two: what they did, anything notable). Then ask how training felt this week and how they are feeling. Follow up once if the answer is thin. Ask specifically about any new niggles or injuries, and check in on any current ones listed above.
-Part 2 — next week's schedule. Briefly note what the calendar already shows, then ask what's on their schedule for next week that is NOT in the calendar — extra commitments, evenings that opened up, travel changes.
-Part 3 — cooking. Ask if there are any days next week they don't need to be cooking.
+Part 2 — next week's schedule and travel. Briefly note what the calendar already shows, then ask what's on their schedule for next week that is NOT in the calendar — extra commitments, evenings that opened up — and specifically ask about travel: any nights away from home this week, where and when.
+Part 3 — meals. Ask which nights next week they need dinners planned for (prep-ahead recipes), and whether there are nights they definitely don't need to cook. If they only mention travel, confirm whether the away nights are the meal nights.
 
 Then call submit_checkin with everything gathered, faithfully in the runner's own terms. Read the returned summary back to the runner as the proposed changes to next week's training and meal plan, and ask if they're happy for you to apply it. If they want adjustments, gather them and call submit_checkin again with the updated answers. Once they clearly confirm, call confirm_checkin with the latest proposal_id, then relay the result and wrap up warmly in one or two sentences.
 

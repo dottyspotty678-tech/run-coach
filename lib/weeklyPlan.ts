@@ -50,6 +50,11 @@ type PlanContext = {
   travelDates: string[];
   /** V2 away/home engine output — governs MEALS (meal-prep model). */
   awayDates: string[];
+  /**
+   * §3.12: true when awayDates was replaced by the runner's explicit meal
+   * nights (voice check-in / Plan screen) — changes the prompt's wording.
+   */
+  mealDatesExplicit?: boolean;
   sections: {
     trainingSummary: string;
     calendarSummary: string;
@@ -384,7 +389,7 @@ type RevisionRequest = {
 // meal on a no-cook away day, since away dates come fresh from the calendar).
 // ---------------------------------------------------------------------------
 
-type AppliedCheckin = { notes: string[]; noCookDates: string[] };
+type AppliedCheckin = { notes: string[]; noCookDates: string[]; mealDates: string[] };
 
 async function loadAppliedCheckin(weekStart: string): Promise<AppliedCheckin | null> {
   const supabase = createServiceClient();
@@ -411,12 +416,20 @@ async function loadAppliedCheckin(weekStart: string): Promise<AppliedCheckin | n
   const noCookDates = Array.isArray(p.no_cook_dates)
     ? p.no_cook_dates.filter((d): d is string => typeof d === "string")
     : [];
-  if (notes.length === 0 && noCookDates.length === 0) return null;
-  return { notes, noCookDates };
+  const mealDates = Array.isArray(p.meal_dates)
+    ? p.meal_dates.filter((d): d is string => typeof d === "string")
+    : [];
+  if (notes.length === 0 && noCookDates.length === 0 && mealDates.length === 0) return null;
+  return { notes, noCookDates, mealDates };
 }
 
 function checkinBlockFor(checkin: AppliedCheckin): string {
   const lines = [...checkin.notes];
+  if (checkin.mealDates.length > 0) {
+    lines.push(
+      `- Prep-ahead dinners on exactly: ${checkin.mealDates.map(formatDateShort).join(", ")} (already reflected in the meal days above).`
+    );
+  }
   if (checkin.noCookDates.length > 0) {
     lines.push(
       `- No prepped meal on: ${checkin.noCookDates.map(formatDateShort).join(", ")} (already excluded from the away days above).`
@@ -437,8 +450,11 @@ function buildPrompt(
     context.travelDates.length > 0
       ? `Travel days this week (from the calendar — these shape TRAINING sessions): ${context.travelDates.join(", ")}.`
       : "No travel days this week.";
-  const awayLine =
-    context.awayDates.length > 0
+  const awayLine = context.mealDatesExplicit
+    ? context.awayDates.length > 0
+      ? `Meal nights this week (the runner asked for a prep-ahead dinner on EXACTLY these dates, whether or not they are away — these are the ONLY days that get meals): ${context.awayDates.join(", ")}.`
+      : "The runner asked for no prepped meals this week — return an empty meals array and an empty shopping list."
+    : context.awayDates.length > 0
       ? `Away days this week (nights away from home — these are the ONLY days that get meals, prepped ahead): ${context.awayDates.join(", ")}.`
       : "No away days this week — return an empty meals array and an empty shopping list.";
 
@@ -873,6 +889,11 @@ export async function generateWeeklyPlan(options?: {
    */
   skipMealDates?: string[];
   /**
+   * §3.12: the runner's explicit meal nights — REPLACES the away-day set
+   * entirely (meals on exactly these dates, whether away or not).
+   */
+  mealDates?: string[];
+  /**
    * Voice check-in (§3.12): plan/revise this Monday's week instead of the
    * boundary-rule week. YYYY-MM-DD, must be a Monday.
    */
@@ -890,6 +911,19 @@ export async function generateWeeklyPlan(options?: {
   // what was agreed by voice.
   const checkin = options?.fromVoiceCheckin ? null : await loadAppliedCheckin(context.weekStart);
   const checkinBlock = checkin ? checkinBlockFor(checkin) : "";
+
+  // Explicit meal nights (call option first, then the standing check-in)
+  // replace the away-derived meal days wholesale.
+  const explicitMealDates = options?.mealDates?.length
+    ? options.mealDates
+    : checkin?.mealDates.length
+      ? checkin.mealDates
+      : null;
+  if (explicitMealDates) {
+    const week = new Set(context.weekDatesList);
+    context.awayDates = [...new Set(explicitMealDates.filter((d) => week.has(d)))].sort();
+    context.mealDatesExplicit = true;
+  }
 
   const skipMeals = new Set([...(options?.skipMealDates ?? []), ...(checkin?.noCookDates ?? [])]);
   if (skipMeals.size > 0) {

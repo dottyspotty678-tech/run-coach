@@ -141,7 +141,8 @@ export type CheckinAnswers = {
   training_feedback: string;
   injury_update: string;
   schedule_notes: string;
-  no_cook_days: string;
+  /** Which nights need a prepped dinner / which need no cooking (free text). */
+  meal_nights: string;
 };
 
 const ProposalSchema = z.object({
@@ -177,6 +178,11 @@ const ProposalSchema = z.object({
     .array(z.string())
     .describe(
       "YYYY-MM-DD dates within the plan week the runner said they need no cooked/prepped meal. Empty if none. Resolve day names against the plan week's dates."
+    ),
+  meal_dates: z
+    .array(z.string())
+    .describe(
+      "YYYY-MM-DD dates within the plan week the runner EXPLICITLY wants a prepped dinner for (e.g. 'recipes for Tuesday and Wednesday only' -> exactly those two dates). Empty when they didn't specify meal nights — meals then follow the away-day logic. When set, these dates fully define the meal plan."
     ),
   calendar_additions: z
     .array(
@@ -229,13 +235,14 @@ THE RUNNER'S ANSWERS FROM THE MEETING:
 How training went and how they feel: "${answers.training_feedback}"
 Niggles / injuries: "${answers.injury_update}"
 Schedule for next week beyond the calendar: "${answers.schedule_notes}"
-Days they don't need to cook: "${answers.no_cook_days}"
+Meal nights (which dinners to plan / which not): "${answers.meal_nights}"
 
 RULES:
 - Propose the MINIMUM set of changes the answers actually require — availability clashes move sessions, fatigue or niggles soften them, freed-up days may restore quality. Do not redesign a week that already fits.
 - Declared activities are plan changes, never mere context: when the runner says they WILL do something (climbing, a long cycle, football, a gym session), emit a plan_change for that date telling the plan to schedule it as that day's session — sport counts as cross-training, gym as strength, and a sport plus a gym session on the same day fold into one entry — and to rebalance the week's running around it. The runner saying it happens means it happens; the plan must show it.
 - Injuries: work around anything current (that judgement happens at regeneration — your job is an accurate injuries_current text and, where clearly needed, a protective plan_change).
-- no_cook_dates: only dates the runner explicitly does not need food planned for. These remove that day's prep-ahead meal.
+- meal_dates: when the runner names the nights they want dinners planned ("Tuesday and Wednesday only"), set meal_dates to exactly those dates — that fully defines the week's meal plan. Leave empty when they didn't specify.
+- no_cook_dates: only dates the runner explicitly does not need food planned for. These remove that day's prep-ahead meal (used when no full meal_dates list was given).
 - calendar_additions: extract each concrete, dated commitment from the schedule answer that the calendar context does not already show (dinners, trips, freed evenings are NOT events — only real commitments). Mark trips/nights away is_travel true with the location if given. These are written to the runner's calendar and feed travel-day and away-day planning, so accuracy beats completeness. Mention in spoken_summary anything you're adding to the calendar.
 - Never invent commitments, sessions or injuries not in the context or answers. Never medical advice, calories or macros.
 - spoken_summary is heard, not read: short sentences, no formatting, UK English, dates like "15 Aug".${
@@ -277,6 +284,7 @@ export async function analyseCheckin(
       date: c.date && valid.has(c.date) ? c.date : null,
     })),
     no_cook_dates: parsed.no_cook_dates.filter((d) => valid.has(d)),
+    meal_dates: parsed.meal_dates.filter((d) => valid.has(d)),
     calendar_additions: parsed.calendar_additions.filter(
       (e) => valid.has(e.date) && e.title.trim() !== ""
     ),
@@ -395,6 +403,7 @@ export async function applyCheckin(proposalId: string): Promise<{ spoken_result:
   // Proposals stored before the calendar feature lack the field — default it.
   const rawProposal = row.proposal_json as Record<string, unknown>;
   if (!Array.isArray(rawProposal.calendar_additions)) rawProposal.calendar_additions = [];
+  if (!Array.isArray(rawProposal.meal_dates)) rawProposal.meal_dates = [];
   const proposal = ProposalSchema.parse(rawProposal);
   const done: string[] = [];
 
@@ -434,11 +443,19 @@ export async function applyCheckin(proposalId: string): Promise<{ spoken_result:
   // 4. One revision regenerates training + meals when anything changed. New
   // calendar events count as changes — travel/away days shift the plan.
   const hasChanges =
-    proposal.plan_changes.length > 0 || proposal.no_cook_dates.length > 0 || eventCount > 0;
+    proposal.plan_changes.length > 0 ||
+    proposal.no_cook_dates.length > 0 ||
+    proposal.meal_dates.length > 0 ||
+    eventCount > 0;
   if (hasChanges) {
     const lines = proposal.plan_changes.map((c) =>
       c.date ? `- ${formatDayShort(c.date)} (${c.date}): ${c.instruction}` : `- General: ${c.instruction}`
     );
+    if (proposal.meal_dates.length > 0) {
+      lines.push(
+        `- Prep-ahead dinners on exactly: ${proposal.meal_dates.map(formatDateShort).join(", ")} — these dates fully define the meal plan.`
+      );
+    }
     if (proposal.no_cook_dates.length > 0) {
       lines.push(
         `- No cooked meal needed on: ${proposal.no_cook_dates.map(formatDateShort).join(", ")} (these days carry no prep-ahead meal).`
@@ -447,6 +464,7 @@ export async function applyCheckin(proposalId: string): Promise<{ spoken_result:
     await generateWeeklyPlan({
       revisionNote: `From the Sunday voice check-in — apply ALL of these together:\n${lines.join("\n")}`,
       skipMealDates: proposal.no_cook_dates,
+      ...(proposal.meal_dates.length > 0 ? { mealDates: proposal.meal_dates } : {}),
       // Revise the week this proposal was built against, not the boundary week.
       targetWeekStart: weekStart,
       // The note above IS this proposal — skip the standing-agreement fold.

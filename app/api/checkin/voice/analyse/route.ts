@@ -20,9 +20,10 @@ export async function POST(request: Request) {
       training_feedback: field(body, "training_feedback"),
       injury_update: field(body, "injury_update"),
       schedule_notes: field(body, "schedule_notes"),
-      no_cook_days: field(body, "no_cook_days"),
+      // v3 agents send meal_nights; accept the old field from a stale agent.
+      meal_nights: field(body, "meal_nights") || field(body, "no_cook_days"),
     };
-    if (!answers.training_feedback && !answers.schedule_notes && !answers.no_cook_days) {
+    if (!answers.training_feedback && !answers.schedule_notes && !answers.meal_nights) {
       return NextResponse.json({ error: "No check-in answers provided." }, { status: 400 });
     }
 
