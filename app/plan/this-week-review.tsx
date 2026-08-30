@@ -4,6 +4,7 @@ import { useState } from "react";
 import type { SessionType } from "@/lib/planTypes";
 import { SESSION_META, SessionBadge } from "@/components/session";
 import { IconTick } from "@/components/icons";
+import { LogSessionButton } from "@/app/activities/log-session";
 import { RouteLine, WaymarkNode } from "./route-node";
 
 // This week (the review surface — brief §2): the route card, read-only.
@@ -145,6 +146,24 @@ export function ThisWeekReview({ rows }: { rows: ReviewRow[] }) {
                   <p className="path-aside text-[12px] leading-[17px]" style={{ color: meta.color }}>
                     <span style={{ color: "var(--ink-2)" }}>{row.why}</span>
                   </p>
+                  {/* Past days: backfill a session that never reached Strava.
+                      Pre-filled with this date and the planned type; the sheet
+                      writes through addManualActivity, which revalidates /plan
+                      so the Done/Missed chip updates on save. */}
+                  {row.isPast && (
+                    <div className="pt-1.5">
+                      <LogSessionButton
+                        todayIso={row.date}
+                        defaultType={row.session_type === "rest" ? "" : row.session_type}
+                        appearance="secondary"
+                        label={
+                          row.actual.length > 0
+                            ? "Log another session"
+                            : `Log a session for ${row.dateLabel}`
+                        }
+                      />
+                    </div>
+                  )}
                 </div>
               )}
             </li>
