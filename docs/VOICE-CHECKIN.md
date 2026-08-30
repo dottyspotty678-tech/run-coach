@@ -72,3 +72,15 @@ week's plan, asks what to change, and submits the merged answers. Revise
 proposals leave the recorded feedback note untouched unless revisited, and
 append calendar events rather than replacing the week's earlier ones. The
 meeting mode travels inside `answers_json.mode`.
+
+## Ask Coach (Dashboard)
+
+The Dashboard's Ask Coach tile opens a free-form voice session on the same
+stack (`useVoiceSession("coach")` → `POST start {session:"coach"}`). No
+script: the agent answers questions about training, nutrition and the race
+build from its briefing (which includes the race goal + phase), and when the
+runner asks for changes — upcoming sessions, feelings, niggles, meals — it
+runs the same submit/confirm tool flow. Coach sessions target the BOUNDARY
+week (the week in progress; flips Sunday 17:00), the analysis only touches
+days from today onward, and calendar additions append rather than replace.
+Questions-only sessions touch no data.

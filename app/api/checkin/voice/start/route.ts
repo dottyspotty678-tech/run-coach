@@ -9,15 +9,21 @@ import { buildVoiceBriefing } from "@/lib/voiceCheckin";
 
 export const maxDuration = 60;
 
-export async function POST() {
+export async function POST(request: Request) {
   try {
-    const [agentId, briefing] = await Promise.all([ensureVoiceAgent(), buildVoiceBriefing()]);
+    const body = (await request.json().catch(() => ({}))) as { session?: unknown };
+    const session = body?.session === "coach" ? "coach" : "checkin";
+    const [agentId, briefing] = await Promise.all([
+      ensureVoiceAgent(),
+      buildVoiceBriefing(new Date(), session),
+    ]);
     const signedUrl = await getSignedUrl(agentId);
     return NextResponse.json({
       signed_url: signedUrl,
       dynamic_variables: briefing.dynamicVariables,
       plan_week: briefing.planWeek,
       described_week: briefing.describedWeek,
+      session: briefing.session,
     });
   } catch (err) {
     console.error("Voice check-in start failed:", err);

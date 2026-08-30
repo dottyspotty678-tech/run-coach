@@ -3,6 +3,7 @@ import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { createServiceClient } from "@/lib/supabase/service";
 import { generateWeeklyPlan } from "@/lib/weeklyPlan";
+import { getTrainingPhase } from "@/lib/trainingPhase";
 import { isTrainingDay, parseAwayMeals } from "@/lib/planTypes";
 import {
   awayDatesForRange,
@@ -16,6 +17,7 @@ import {
 } from "@/components/data";
 import {
   addDays,
+  boundaryWeekStart,
   formatDateShort,
   formatDayShort,
   londonDateOf,
@@ -35,35 +37,63 @@ import {
 // Briefing — dynamic variables injected into the agent's prompt.
 // ---------------------------------------------------------------------------
 
+export type VoiceSessionKind = "checkin" | "coach";
+
 export type VoiceBriefing = {
+  session: VoiceSessionKind;
   /** Plan (boundary) week the changes will target. */
   planWeek: string;
   /** Week the feedback describes — the week containing today. */
   describedWeek: string;
-  /** "revise" when this week's check-in is already applied (§3.12). */
-  mode: "full" | "revise";
+  /** "revise" when this week's check-in is already applied; "coach" for Ask Coach (§3.12). */
+  mode: "full" | "revise" | "coach";
   dynamicVariables: Record<string, string>;
 };
 
-export async function buildVoiceBriefing(now = new Date()): Promise<VoiceBriefing> {
+export async function buildVoiceBriefing(
+  now = new Date(),
+  session: VoiceSessionKind = "checkin"
+): Promise<VoiceBriefing> {
   const today = todayISO(now);
   const describedWeek = mondayOf(today);
-  // The meeting is always forward-looking: it reviews the week containing
-  // today and plans the week AFTER it — regardless of the Sunday 17:00
-  // boundary rule the rest of the app uses (a 15:00 Sunday check-in must not
-  // brief on the week that is already over).
-  const planWeek = addDays(describedWeek, 7);
+  // Check-in: always forward-looking — reviews the week containing today and
+  // plans the week AFTER it, regardless of the Sunday 17:00 boundary rule
+  // (a 15:00 Sunday check-in must not brief on the week that is already
+  // over). Ask Coach: the week you are operating IN — the boundary week
+  // (current week midweek; flips to the new week Sunday 17:00).
+  const planWeek = session === "coach" ? boundaryWeekStart(now) : addDays(describedWeek, 7);
   const planDates = weekDates(planWeek);
 
-  const [activities, context, plan, events, appliedCheckin, recentFeedback] = await Promise.all([
-    getRecentActivities(7),
-    getRunnerContext(),
-    getPlanForWeek(planWeek),
-    getEventsForWeek(planWeek),
-    getLatestAppliedCheckin([planWeek]),
-    getRecentFeedback(3),
-  ]);
-  const mode: "full" | "revise" = appliedCheckin ? "revise" : "full";
+  const supabaseRead = createServiceClient();
+  const [activities, context, plan, events, appliedCheckin, recentFeedback, raceGoalRes] =
+    await Promise.all([
+      getRecentActivities(7),
+      getRunnerContext(),
+      getPlanForWeek(planWeek),
+      getEventsForWeek(planWeek),
+      getLatestAppliedCheckin([planWeek]),
+      getRecentFeedback(3),
+      supabaseRead.from("race_goal").select("*").eq("id", true).maybeSingle(),
+    ]);
+  const raceGoal = raceGoalRes.data as {
+    race_name: string;
+    distance_km: number;
+    race_date: string;
+    target_time: string | null;
+  } | null;
+  let raceLine = "no target race set — training for general fitness";
+  if (raceGoal) {
+    const { phase, weeksToRace } = getTrainingPhase(
+      new Date(raceGoal.race_date),
+      raceGoal.distance_km,
+      now
+    );
+    raceLine = `${raceGoal.race_name}, ${raceGoal.distance_km} km on ${formatDateShort(raceGoal.race_date)}${
+      raceGoal.target_time ? `, target ${raceGoal.target_time}` : ""
+    } — ${weeksToRace.toFixed(1)} weeks out, ${phase.replace("_", " ")} phase`;
+  }
+  const mode: "full" | "revise" | "coach" =
+    session === "coach" ? "coach" : appliedCheckin ? "revise" : "full";
   const recordedFeedback =
     recentFeedback.find((f) => f.week_start_date === describedWeek)?.feedback ??
     "none recorded yet";
@@ -114,15 +144,19 @@ export async function buildVoiceBriefing(now = new Date()): Promise<VoiceBriefin
     scheduleLines.length > 0 ? scheduleLines.join("\n") : "The calendar is empty for next week.";
 
   return {
+    session,
     planWeek,
     describedWeek,
     mode,
     dynamicVariables: {
       today: formatDateShort(today),
+      race_goal: raceLine,
       greeting:
-        mode === "revise"
-          ? "Evening — you've already done this week's check-in. Want me to run through what's set and change anything?"
-          : "Evening — got a few minutes for your Sunday check-in? Let's start with the week you've just had.",
+        mode === "coach"
+          ? "Hi — what can I do for you? Your week, how you're feeling, or anything about training."
+          : mode === "revise"
+            ? "Evening — you've already done this week's check-in. Want me to run through what's set and change anything?"
+            : "Evening — got a few minutes for your Sunday check-in? Let's start with the week you've just had.",
       meeting_mode: mode,
       recorded_feedback: recordedFeedback,
       week_review: weekReview,
@@ -220,7 +254,7 @@ function analysisPrompt(
   const planDates = weekDates(briefing.planWeek);
   return `You are the planning brain behind a UK running coach app's Sunday voice check-in. The voice agent has just finished the meeting. Turn the runner's answers into a concrete, minimal proposal.
 
-NEXT WEEK (the plan week) starts ${briefing.planWeek} (Monday); its dates are ${planDates.join(", ")}. Resolve any day names in the answers against these dates. The feedback note describes the week starting ${briefing.describedWeek}.
+${briefing.session === "coach" ? "THE WEEK BEING ADJUSTED (an Ask Coach session about the week in progress)" : "NEXT WEEK (the plan week)"} starts ${briefing.planWeek} (Monday); its dates are ${planDates.join(", ")}. Resolve any day names in the answers against these dates. The feedback note describes the week starting ${briefing.describedWeek}.
 
 WHAT THE APP ALREADY KNOWS:
 Last week's recorded training:
@@ -246,6 +280,11 @@ RULES:
 - calendar_additions: extract each concrete, dated commitment from the schedule answer that the calendar context does not already show (dinners, trips, freed evenings are NOT events — only real commitments). Mark trips/nights away is_travel true with the location if given. These are written to the runner's calendar and feed travel-day and away-day planning, so accuracy beats completeness. Mention in spoken_summary anything you're adding to the calendar.
 - Never invent commitments, sessions or injuries not in the context or answers. Never medical advice, calories or macros.
 - spoken_summary is heard, not read: short sentences, no formatting, UK English, dates like "15 Aug".${
+    briefing.session === "coach"
+      ? `
+- THIS IS A MID-WEEK COACH SESSION: change only what the runner raised, and only days from today onward — never rewrite days already trained. Leave week_feedback_note EMPTY unless they described how training is feeling (that note is a mid-week update for the week in progress). Carry injuries_current over verbatim unless they reported a change.`
+      : ""
+  }${
     briefing.mode === "revise"
       ? `
 - THIS IS A REVISE MEETING: a check-in for this week is already applied. Propose only what the runner asked to change now. Leave week_feedback_note EMPTY unless they revisited how the week felt (empty keeps the recorded note). Carry injuries_current over verbatim unless they changed it. calendar_additions holds only NEW commitments from this conversation — previously added events are kept automatically.`
@@ -298,7 +337,7 @@ export async function analyseCheckin(
       described_week: briefing.describedWeek,
       // mode rides inside answers_json (no migration): apply reads it to
       // decide whether calendar events replace (full) or append (revise).
-      answers_json: { ...answers, mode: briefing.mode },
+      answers_json: { ...answers, mode: briefing.mode, session: briefing.session },
       proposal_json: proposal,
     })
     .select("id")
@@ -429,8 +468,11 @@ export async function applyCheckin(proposalId: string): Promise<{ spoken_result:
 
   // 3. Calendar first (idempotent per week), so regeneration sees the events.
   const weekStart = String(row.week_start_date);
-  const meetingMode =
-    (row.answers_json as Record<string, unknown> | null)?.mode === "revise" ? "revise" : "full";
+  // Only a FULL Sunday meeting owns the week's check-in events outright;
+  // revise and coach sessions append so earlier events stand.
+  const meetingMode = String(
+    (row.answers_json as Record<string, unknown> | null)?.mode ?? "full"
+  );
   const eventCount = await writeCalendarAdditions(
     weekStart,
     proposal.calendar_additions,

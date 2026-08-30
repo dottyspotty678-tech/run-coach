@@ -27,7 +27,8 @@ export async function POST(request: Request) {
       return NextResponse.json({ error: "No check-in answers provided." }, { status: 400 });
     }
 
-    const briefing = await buildVoiceBriefing();
+    const session = body.session === "coach" ? ("coach" as const) : ("checkin" as const);
+    const briefing = await buildVoiceBriefing(new Date(), session);
     const { proposalId, proposal } = await analyseCheckin(briefing, answers);
     return NextResponse.json({
       proposal_id: proposalId,
