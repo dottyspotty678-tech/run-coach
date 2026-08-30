@@ -186,13 +186,13 @@ export default async function NutritionPage() {
         </section>
       ) : (
         <>
-          {/* Next away days */}
+          {/* Planned dinners — away-derived or explicit meal nights (§3.12). */}
           <section className="flex flex-col gap-2">
             <h2 className="overline" style={{ color: "var(--ink-2)" }}>
-              Next away days
+              Planned dinners
             </h2>
             <p className="-mt-1 text-[12px]" style={{ color: "var(--ink-3)" }}>
-              Prep these at home before you travel.
+              Prep ahead at home — take along, reheat or eat cold.
             </p>
             {orderedAway.map((meal) => (
               <AwayMealCard key={meal.date} meal={meal} isToday={meal.date === today} />
