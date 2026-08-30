@@ -299,6 +299,8 @@ export async function applyCheckin(proposalId: string): Promise<{ spoken_result:
       skipMealDates: proposal.no_cook_dates,
       // Revise the week this proposal was built against, not the boundary week.
       targetWeekStart: String(row.week_start_date),
+      // The note above IS this proposal — skip the standing-agreement fold.
+      fromVoiceCheckin: true,
     });
     done.push("updated next week's training and meal plan");
   }

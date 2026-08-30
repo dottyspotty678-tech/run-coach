@@ -39,6 +39,12 @@ engine updates the training and meal screens.
 Nothing changes without the spoken confirmation; an abandoned call leaves the
 proposal row at `proposed` and touches no data.
 
+A confirmed check-in is a standing agreement for its week: every later
+generation of that week — the Sunday cron's fresh plan, the manual Generate
+button, pending-batch revisions — folds the latest applied proposal back in
+(`loadAppliedCheckin` in `lib/weeklyPlan.ts`), so cron order doesn't matter
+and a no-cook day stays meal-free however many times the week regenerates.
+
 ## Setup
 
 - `ELEVENLABS_API_KEY` in Vercel env vars (required).

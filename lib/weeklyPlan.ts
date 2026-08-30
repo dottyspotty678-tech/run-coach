@@ -375,7 +375,64 @@ type RevisionRequest = {
   currentPlanJson: string;
 };
 
-function buildPrompt(context: PlanContext, revision?: RevisionRequest | null): string {
+// ---------------------------------------------------------------------------
+// Voice check-in standing agreements (§3.12). A confirmed Sunday check-in is
+// a commitment for its week: every later generation of that week — the
+// Sunday cron's fresh plan, the manual Generate button, pending-batch
+// revisions — must keep honouring its changes and no-cook days, or the cron
+// would silently regenerate them away (and a later revision would re-add a
+// meal on a no-cook away day, since away dates come fresh from the calendar).
+// ---------------------------------------------------------------------------
+
+type AppliedCheckin = { notes: string[]; noCookDates: string[] };
+
+async function loadAppliedCheckin(weekStart: string): Promise<AppliedCheckin | null> {
+  const supabase = createServiceClient();
+  const { data, error } = await supabase
+    .from("voice_checkins")
+    .select("proposal_json")
+    .eq("week_start_date", weekStart)
+    .eq("status", "applied")
+    .order("applied_at", { ascending: false })
+    .limit(1)
+    .maybeSingle();
+  // Degrade open (matching the other optional tables): no migration, no rows
+  // or malformed JSON just means no standing agreements.
+  if (error || !data || !isRecord(data.proposal_json)) return null;
+  const p = data.proposal_json;
+  const notes: string[] = [];
+  if (Array.isArray(p.plan_changes)) {
+    for (const c of p.plan_changes) {
+      if (!isRecord(c) || typeof c.instruction !== "string" || !c.instruction.trim()) continue;
+      const date = typeof c.date === "string" ? c.date : null;
+      notes.push(date ? `- ${formatDayShort(date)} (${date}): ${c.instruction}` : `- General: ${c.instruction}`);
+    }
+  }
+  const noCookDates = Array.isArray(p.no_cook_dates)
+    ? p.no_cook_dates.filter((d): d is string => typeof d === "string")
+    : [];
+  if (notes.length === 0 && noCookDates.length === 0) return null;
+  return { notes, noCookDates };
+}
+
+function checkinBlockFor(checkin: AppliedCheckin): string {
+  const lines = [...checkin.notes];
+  if (checkin.noCookDates.length > 0) {
+    lines.push(
+      `- No prepped meal on: ${checkin.noCookDates.map(formatDateShort).join(", ")} (already excluded from the away days above).`
+    );
+  }
+  return `
+
+STANDING AGREEMENTS FROM THE RUNNER'S SUNDAY CHECK-IN (already confirmed — honour ALL of these in this plan, whatever else changes):
+${lines.join("\n")}`;
+}
+
+function buildPrompt(
+  context: PlanContext,
+  revision?: RevisionRequest | null,
+  checkinBlock = ""
+): string {
   const travelLine =
     context.travelDates.length > 0
       ? `Travel days this week (from the calendar — these shape TRAINING sessions): ${context.travelDates.join(", ")}.`
@@ -407,7 +464,7 @@ Revision rules:
 THE WEEK:
 The week starts ${context.weekStart} (Monday). Produce exactly 7 training_days with these consecutive dates: ${context.weekDatesList.join(", ")}. Produce exactly one meal for each away day listed below, and no meals for any other day.
 ${travelLine}
-${awayLine}${revisionBlock}
+${awayLine}${checkinBlock}${revisionBlock}
 
 TRAINING HISTORY (last 28 days):
 ${context.sections.trainingSummary}
@@ -820,11 +877,23 @@ export async function generateWeeklyPlan(options?: {
    * boundary-rule week. YYYY-MM-DD, must be a Monday.
    */
   targetWeekStart?: string;
+  /**
+   * §3.12: true when this call IS the check-in apply — its revision note
+   * already carries the proposal, so the standing-agreement fold is skipped.
+   */
+  fromVoiceCheckin?: boolean;
 }) {
   const context = await buildContext(options?.targetWeekStart);
-  if (options?.skipMealDates?.length) {
-    const skip = new Set(options.skipMealDates);
-    context.awayDates = context.awayDates.filter((d) => !skip.has(d));
+
+  // §3.12: fold the week's confirmed check-in (if any) into every other
+  // generation path, so the Sunday cron and later revisions keep honouring
+  // what was agreed by voice.
+  const checkin = options?.fromVoiceCheckin ? null : await loadAppliedCheckin(context.weekStart);
+  const checkinBlock = checkin ? checkinBlockFor(checkin) : "";
+
+  const skipMeals = new Set([...(options?.skipMealDates ?? []), ...(checkin?.noCookDates ?? [])]);
+  if (skipMeals.size > 0) {
+    context.awayDates = context.awayDates.filter((d) => !skipMeals.has(d));
   }
 
   // U7: load the plan being revised. If none exists (note sent against an
@@ -861,7 +930,7 @@ export async function generateWeeklyPlan(options?: {
     }
   }
 
-  const basePrompt = buildPrompt(context, revision);
+  const basePrompt = buildPrompt(context, revision, checkinBlock);
 
   let validated: ValidatedPlan | null = null;
   let lastErrors: string[] = [];
