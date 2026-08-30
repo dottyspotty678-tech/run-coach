@@ -32,7 +32,6 @@ import {
 } from "@/components/data";
 import { SESSION_META, SessionBadge } from "@/components/session";
 import { Banner } from "@/components/banner";
-import { GeneratePlanButton } from "@/components/generate-plan";
 import { PullRefresh } from "@/components/pull-refresh";
 import { LogSessionButton } from "@/app/activities/log-session";
 import {
@@ -229,7 +228,9 @@ export default async function DashboardPage() {
             <p className="text-[14px]" style={{ color: "var(--ink-2)" }}>
               Built from your calendar and recent running.
             </p>
-            <GeneratePlanButton hasPlan={false} />
+            <Link href="/checkin" className="btn-primary">
+              Start a check-in
+            </Link>
           </section>
         ) : todaySession ? (
           /* The hero is tonight's waymark: the session badge as the disc on

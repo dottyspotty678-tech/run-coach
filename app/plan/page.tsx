@@ -32,7 +32,6 @@ import {
   type CalendarEventRow,
 } from "@/components/data";
 import { SESSION_META } from "@/components/session";
-import { GeneratePlanButton } from "@/components/generate-plan";
 import { IconChevronRight } from "@/components/icons";
 import { PlanWeekToggle } from "./week-toggle";
 import { ThisWeekReview, type ReviewRow } from "./this-week-review";
@@ -365,9 +364,11 @@ export default async function PlanPage({
         <section className="card flex flex-col items-start gap-3 p-5">
           <h2 className="text-[20px] font-semibold">No plan yet for this week</h2>
           <p className="text-[14px]" style={{ color: "var(--ink-2)" }}>
-            Built from your calendar and recent running.
+            The coach builds it at your Sunday check-in.
           </p>
-          <GeneratePlanButton hasPlan={false} weekStartDate={thisWeekStart} />
+          <Link href="/checkin" className="btn-primary">
+            Start a check-in
+          </Link>
         </section>
       ) : (
         <>
@@ -390,12 +391,9 @@ export default async function PlanPage({
                   </span>
                 )}
               </div>
-              <div className="flex shrink-0 flex-col items-end gap-1">
-                <GeneratePlanButton hasPlan appearance="compact" weekStartDate={thisWeekStart} />
-                <span className="text-[11px]" style={{ color: "var(--ink-3)" }}>
-                  Generated {relativeTime(thisPlan.generated_at, now)}
-                </span>
-              </div>
+              <span className="shrink-0 pt-1 text-[11px]" style={{ color: "var(--ink-3)" }}>
+                Generated {relativeTime(thisPlan.generated_at, now)}
+              </span>
             </div>
             <WeekSummarySection
               plan={thisPlan}
@@ -435,13 +433,11 @@ export default async function PlanPage({
         <section className="card flex flex-col items-start gap-3 p-5">
           <h2 className="text-[20px] font-semibold">Next week&apos;s plan isn&apos;t ready yet</h2>
           <p className="text-[14px]" style={{ color: "var(--ink-2)" }}>
-            Generates Sunday evening — or tap to generate now.
+            Generates Sunday evening — or ask the coach in a check-in.
           </p>
-          <GeneratePlanButton
-            hasPlan={false}
-            weekStartDate={nextWeekStart}
-            weekLabel="next week's"
-          />
+          <Link href="/checkin" className="btn-primary">
+            Start a check-in
+          </Link>
         </section>
       ) : (
         <>
@@ -464,17 +460,9 @@ export default async function PlanPage({
                   </span>
                 )}
               </div>
-              <div className="flex shrink-0 flex-col items-end gap-1">
-                <GeneratePlanButton
-                  hasPlan
-                  appearance="compact"
-                  weekStartDate={nextWeekStart}
-                  weekLabel="next week's"
-                />
-                <span className="text-[11px]" style={{ color: "var(--ink-3)" }}>
-                  Generated {relativeTime(nextPlan.generated_at, now)}
-                </span>
-              </div>
+              <span className="shrink-0 pt-1 text-[11px]" style={{ color: "var(--ink-3)" }}>
+                Generated {relativeTime(nextPlan.generated_at, now)}
+              </span>
             </div>
             <WeekSummarySection
               plan={nextPlan}

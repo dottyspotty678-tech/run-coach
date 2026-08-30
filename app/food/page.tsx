@@ -15,7 +15,6 @@ import {
 } from "@/components/dates";
 import { getPlanForWeek } from "@/components/data";
 import { MealBadge } from "@/components/session";
-import { GeneratePlanButton } from "@/components/generate-plan";
 import { ScrollToHash } from "@/components/scroll-to-hash";
 import { ShoppingList } from "./shopping-list";
 
@@ -152,7 +151,6 @@ export default async function NutritionPage() {
           <p className="text-[14px]" style={{ color: "var(--ink-2)" }}>
             Recipes and the shopping list arrive with the plan.
           </p>
-          <GeneratePlanButton hasPlan={false} />
         </section>
       ) : awayMeals === null ? (
         /* Legacy plan row — v1 meal format until the next generation. */
