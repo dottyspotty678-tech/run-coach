@@ -154,7 +154,7 @@ const ProposalSchema = z.object({
       })
     )
     .describe(
-      "Concrete training changes required by the runner's availability and feedback. Empty when the plan already fits."
+      "Concrete training changes required by the runner's answers: availability clashes that move or soften sessions, AND every activity the runner declared they WILL do (climbing, a long ride, football, an extra gym session) — each declared activity gets a plan_change putting it into that day's session (cross for sport, strength for gym; two on one day fold into one entry) with the running week rebalanced around it. Empty only when the runner declared nothing and the plan already fits."
     ),
   no_cook_dates: z
     .array(z.string())
@@ -216,6 +216,7 @@ Days they don't need to cook: "${answers.no_cook_days}"
 
 RULES:
 - Propose the MINIMUM set of changes the answers actually require — availability clashes move sessions, fatigue or niggles soften them, freed-up days may restore quality. Do not redesign a week that already fits.
+- Declared activities are plan changes, never mere context: when the runner says they WILL do something (climbing, a long cycle, football, a gym session), emit a plan_change for that date telling the plan to schedule it as that day's session — sport counts as cross-training, gym as strength, and a sport plus a gym session on the same day fold into one entry — and to rebalance the week's running around it. The runner saying it happens means it happens; the plan must show it.
 - Injuries: work around anything current (that judgement happens at regeneration — your job is an accurate injuries_current text and, where clearly needed, a protective plan_change).
 - no_cook_dates: only dates the runner explicitly does not need food planned for. These remove that day's prep-ahead meal.
 - calendar_additions: extract each concrete, dated commitment from the schedule answer that the calendar context does not already show (dinners, trips, freed evenings are NOT events — only real commitments). Mark trips/nights away is_travel true with the location if given. These are written to the runner's calendar and feed travel-day and away-day planning, so accuracy beats completeness. Mention in spoken_summary anything you're adding to the calendar.
