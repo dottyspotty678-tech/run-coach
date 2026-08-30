@@ -40,11 +40,25 @@ export function useVoiceSession(session: VoiceSessionType) {
   // immediately instead of running an orphaned session.
   const generationRef = useRef(0);
 
-  // Never leave the mic open on navigation.
+  // Never leave the mic open on navigation, and never keep a call running
+  // when the app is backgrounded or the page is being torn down — an iOS
+  // home-screen PWA keeps its JS alive in the app switcher, which is exactly
+  // where an orphaned session hides.
   useEffect(() => {
-    return () => {
+    const kill = () => {
       generationRef.current += 1;
       conversationRef.current?.endSession().catch(() => {});
+      conversationRef.current = null;
+    };
+    const onHide = () => {
+      if (document.visibilityState === "hidden") kill();
+    };
+    document.addEventListener("visibilitychange", onHide);
+    window.addEventListener("pagehide", kill);
+    return () => {
+      document.removeEventListener("visibilitychange", onHide);
+      window.removeEventListener("pagehide", kill);
+      kill();
     };
   }, []);
 
