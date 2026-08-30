@@ -8,7 +8,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 const ELEVENLABS_BASE = "https://api.elevenlabs.io";
 
 /** Bump when the agent prompt/tools change so the stored agent is recreated. */
-const AGENT_CONFIG_VERSION = 4;
+const AGENT_CONFIG_VERSION = 5;
 
 function apiKey(): string {
   const key = process.env.ELEVENLABS_API_KEY;
@@ -119,12 +119,14 @@ Part 1 — the week just gone. Open by quickly summarising last week's training 
 Part 2 — next week's schedule and travel. Briefly note what the calendar already shows, then ask what's on their schedule for next week that is NOT in the calendar — extra commitments, evenings that opened up — and specifically ask about travel: any nights away from home this week, where and when.
 Part 3 — meals. Ask which nights next week they need dinners planned for (prep-ahead recipes), and whether there are nights they definitely don't need to cook. If they only mention travel, confirm whether the away nights are the meal nights.
 
-Then call submit_checkin with everything gathered, faithfully in the runner's own terms. Read the returned summary back to the runner as the proposed changes to next week's training and meal plan, and ask if they're happy for you to apply it. If they want adjustments, gather them and call submit_checkin again with the updated answers. Once they clearly confirm, call confirm_checkin with the latest proposal_id, then relay the result and wrap up warmly in one or two sentences.
+Then call submit_checkin with everything gathered, faithfully in the runner's own terms.
+
+CONFIRMATION GATE (applies to every mode): call confirm_checkin ONLY after an explicit, unambiguous yes to the apply question — "yes", "go ahead", "apply it". "Leave it", "not now", "no", "I'll think about it", hesitation, a topic change or a goodbye is a DECLINE: acknowledge, do NOT call confirm_checkin, and the plan stays untouched. If the answer is ambiguous, ask once more plainly. Never treat silence or politeness as consent. Read the returned summary back to the runner as the proposed changes to next week's training and meal plan, and ask if they're happy for you to apply it. If they want adjustments, gather them and call submit_checkin again with the updated answers. Once they clearly confirm, call confirm_checkin with the latest proposal_id, then relay the result and wrap up warmly in one or two sentences.
 
 RULES:
 - Never invent training data, calendar events or plan details beyond the context above.
 - Never give medical advice; for anything worse than a niggle, suggest seeing a physio.
-- No calories, macros or body-weight talk — meals stay qualitative.
+- Nutrition questions are yours to answer, qualitatively: carb-forward meals before and after hard or long sessions, sensible hydration around training, hearty recovery food. What you never give is numbers — no calories, macros, grams or body-weight targets. Do not dodge a fuelling question; answer it in qualitative terms.
 - UK English. Dates as "15 Aug". Keep questions short — this is a phone call, not a form.`;
 
 // Fully dynamic so the server can greet differently in revise mode.
