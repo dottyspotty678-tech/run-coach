@@ -35,22 +35,32 @@ export function useVoiceSession(session: VoiceSessionType) {
   const [error, setError] = useState<string | null>(null);
   const conversationRef = useRef<Conversation | null>(null);
   const appliedRef = useRef(false);
+  // Generation counter: ending (or unmounting) bumps it, so an in-flight
+  // start that resolves afterwards knows it was cancelled and hangs up
+  // immediately instead of running an orphaned session.
+  const generationRef = useRef(0);
 
   // Never leave the mic open on navigation.
   useEffect(() => {
     return () => {
+      generationRef.current += 1;
       conversationRef.current?.endSession().catch(() => {});
     };
   }, []);
 
   async function start() {
+    const generation = ++generationRef.current;
     setPhase("connecting");
     setError(null);
     setResult(null);
     appliedRef.current = false;
     try {
-      // Mic permission first — a denied prompt should fail before any session.
-      await navigator.mediaDevices.getUserMedia({ audio: true });
+      // Mic permission first — a denied prompt should fail before any
+      // session. Stop the probe tracks immediately: this stream exists only
+      // to surface the prompt, and leaving it running kept the microphone
+      // recording after the session ended.
+      const probe = await navigator.mediaDevices.getUserMedia({ audio: true });
+      probe.getTracks().forEach((t) => t.stop());
       const startData = await post("/api/checkin/voice/start", { session });
 
       const conversation = await Conversation.startSession({
@@ -101,14 +111,22 @@ export function useVoiceSession(session: VoiceSessionType) {
           setPhase("error");
         },
       });
+      // Cancelled while connecting (End tapped, sheet closed, unmount):
+      // hang up the just-established session rather than letting it run on.
+      if (generationRef.current !== generation) {
+        conversation.endSession().catch(() => {});
+        return;
+      }
       conversationRef.current = conversation;
     } catch (e) {
+      if (generationRef.current !== generation) return;
       setError(e instanceof Error ? e.message : "Couldn't start the session.");
       setPhase("error");
     }
   }
 
   async function end() {
+    generationRef.current += 1; // invalidate any in-flight start
     try {
       await conversationRef.current?.endSession();
     } finally {
