@@ -1,7 +1,12 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getTrainingPhase } from "@/lib/trainingPhase";
-import { parseTrainingDays, SESSION_TYPES, type TrainingDay } from "@/lib/planTypes";
+import {
+  parseTrainingDays,
+  SESSION_TYPES,
+  type TrainingDay,
+  type WeeklyPlanRow,
+} from "@/lib/planTypes";
 import {
   addDays,
   formatDateShort,
@@ -26,6 +31,7 @@ import {
   travelDatesFromEvents,
   type ActivityRow,
   type CalendarEventRow,
+  type RunnerContext,
 } from "@/components/data";
 import { SESSION_META } from "@/components/session";
 import { GeneratePlanButton } from "@/components/generate-plan";
@@ -44,6 +50,112 @@ function volumeFor(day: TrainingDay): string {
   const km = `${day.title} ${day.detail}`.match(/(\d+(?:[.,]\d+)?)\s*km\b/i);
   if (km) return `${km[1].replace(",", ".")} km`;
   return day.duration_min > 0 ? `${day.duration_min} min` : "—";
+}
+
+/** Week-at-a-glance figures for the stat strip — summed from the structured
+ *  training days (never parsed from the coach's week_summary prose): total
+ *  running km (same title+detail regex the Volume column already uses) and
+ *  a count of non-rest sessions. */
+function weekStats(days: TrainingDay[] | null): { totalKm: number; sessionCount: number } | null {
+  if (!days || days.length === 0) return null;
+  let totalKm = 0;
+  let sessionCount = 0;
+  for (const day of days) {
+    if (day.session_type === "rest") continue;
+    sessionCount += 1;
+    const km = `${day.title} ${day.detail}`.match(/(\d+(?:[.,]\d+)?)\s*km\b/i);
+    if (km) totalKm += Number(km[1].replace(",", "."));
+  }
+  return { totalKm, sessionCount };
+}
+
+/**
+ * The week_summary block, contained: a one-line stat strip (km, sessions,
+ * a "Revised" hint) stands in for the coach's paragraph, which moves behind
+ * a "Summary" disclosure — the same details/summary pattern as the Nutrition
+ * screen's recipe cards — alongside the revision-note quote when present.
+ * Falls back to a short note when the plan predates structured days.
+ */
+function WeekSummarySection({
+  plan,
+  days,
+  now,
+  runnerContext,
+  showCheckinLink = false,
+}: {
+  plan: WeeklyPlanRow;
+  days: TrainingDay[] | null;
+  now: Date;
+  runnerContext: RunnerContext | null;
+  showCheckinLink?: boolean;
+}) {
+  const stats = weekStats(days);
+  return (
+    <>
+      {stats ? (
+        <details className="group">
+          <summary className="flex min-h-[32px] cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
+            <span className="stat-strip">
+              <span className="text-[15px] font-semibold" style={{ color: "var(--ink)" }}>
+                <span className="tabular">{stats.totalKm.toFixed(0)}</span>{" "}
+                <span className="text-[12px] font-medium" style={{ color: "var(--ink-2)" }}>
+                  km
+                </span>
+              </span>
+              <span className="stat-strip-sep" aria-hidden="true" />
+              <span className="text-[15px] font-semibold" style={{ color: "var(--ink)" }}>
+                <span className="tabular">{stats.sessionCount}</span>{" "}
+                <span className="text-[12px] font-medium" style={{ color: "var(--ink-2)" }}>
+                  sessions
+                </span>
+              </span>
+              {plan.revision_note && (
+                <span className="chip" style={{ color: "var(--ink-2)", background: "var(--raised)" }}>
+                  Revised
+                </span>
+              )}
+            </span>
+            <span className="shrink-0 text-[12px] font-semibold" style={{ color: "var(--accent)" }}>
+              <span className="group-open:hidden">Summary</span>
+              <span className="hidden group-open:inline">Close</span>
+            </span>
+          </summary>
+          <div className="flex flex-col gap-1.5 pt-2">
+            {plan.week_summary && (
+              <p className="text-[14px] leading-[21px]" style={{ color: "var(--ink-2)" }}>
+                {plan.week_summary}
+              </p>
+            )}
+            {plan.revision_note && (
+              <p className="text-[12px] leading-[17px]" style={{ color: "var(--ink-3)" }}>
+                Revised{plan.revised_at ? ` ${relativeTime(plan.revised_at, now)}` : ""} — you
+                asked: <span className="italic">&ldquo;{plan.revision_note}&rdquo;</span>
+              </p>
+            )}
+          </div>
+        </details>
+      ) : (
+        <p className="text-[13px]" style={{ color: "var(--ink-2)" }}>
+          Old plan format — regenerate for full details.
+        </p>
+      )}
+      {runnerContext?.injuries && (
+        <p className="truncate text-[13px] leading-[18px]" style={{ color: "var(--warn)" }}>
+          Working around: {runnerContext.injuries}
+        </p>
+      )}
+      {showCheckinLink && (
+        <Link
+          href="/checkin"
+          className="flex min-h-[36px] w-fit items-center gap-0.5 text-[13px] font-semibold"
+          style={{ color: "var(--accent)" }}
+        >
+          Check-in — injuries and how the week felt
+          <IconChevronRight size={14} strokeWidth={2.4} />
+        </Link>
+      )}
+    </>
+  );
 }
 
 /** "Today" / "Tomorrow" / "Monday" — shared by both weeks' rows. */
@@ -258,8 +370,7 @@ export default async function PlanPage({
         <section className="card flex flex-col items-start gap-3 p-5">
           <h2 className="text-[20px] font-semibold">No plan yet for this week</h2>
           <p className="text-[14px]" style={{ color: "var(--ink-2)" }}>
-            Generate the week&apos;s training and away-day meals from your calendar and recent
-            running.
+            Built from your calendar and recent running.
           </p>
           <GeneratePlanButton hasPlan={false} weekStartDate={thisWeekStart} />
         </section>
@@ -291,29 +402,13 @@ export default async function PlanPage({
                 </span>
               </div>
             </div>
-            <p className="text-[14px] leading-[21px]" style={{ color: "var(--ink-2)" }}>
-              {thisPlan.week_summary ||
-                "This plan predates the current format — regenerate to get a week summary and day-by-day sessions."}
-            </p>
-            {thisPlan.revision_note && (
-              <p className="text-[12px] leading-[17px]" style={{ color: "var(--ink-3)" }}>
-                Revised{thisPlan.revised_at ? ` ${relativeTime(thisPlan.revised_at, now)}` : ""} — you
-                asked: <span className="italic">&ldquo;{thisPlan.revision_note}&rdquo;</span>
-              </p>
-            )}
-            {runnerContext?.injuries && (
-              <p className="text-[13px] leading-[18px]" style={{ color: "var(--warn)" }}>
-                Working around: {runnerContext.injuries}
-              </p>
-            )}
-            <Link
-              href="/checkin"
-              className="flex min-h-[36px] w-fit items-center gap-0.5 text-[13px] font-semibold"
-              style={{ color: "var(--accent)" }}
-            >
-              Check-in — injuries and how the week felt
-              <IconChevronRight size={14} strokeWidth={2.4} />
-            </Link>
+            <WeekSummarySection
+              plan={thisPlan}
+              days={thisDays}
+              now={now}
+              runnerContext={runnerContext}
+              showCheckinLink
+            />
           </section>
 
           <section className="flex flex-col gap-2">
@@ -324,11 +419,11 @@ export default async function PlanPage({
               <ThisWeekReview rows={thisWeekReviewRows} />
             ) : (
               <section className="card flex flex-col gap-2 p-4">
-                <p className="whitespace-pre-wrap text-[14px] leading-[21px]">
+                <p className="line-clamp-4 whitespace-pre-wrap text-[14px] leading-[21px]">
                   {thisPlan.training_plan_text}
                 </p>
                 <p className="text-[13px]" style={{ color: "var(--ink-2)" }}>
-                  Regenerate to get the day-by-day review.
+                  Regenerate for the day-by-day view.
                 </p>
               </section>
             )}
@@ -346,8 +441,7 @@ export default async function PlanPage({
         <section className="card flex flex-col items-start gap-3 p-5">
           <h2 className="text-[20px] font-semibold">Next week&apos;s plan isn&apos;t ready yet</h2>
           <p className="text-[14px]" style={{ color: "var(--ink-2)" }}>
-            It generates automatically on Sunday evening, once this week&apos;s running is in. You
-            can also generate it now.
+            Generates Sunday evening — or tap to generate now.
           </p>
           <GeneratePlanButton
             hasPlan={false}
@@ -388,21 +482,12 @@ export default async function PlanPage({
                 </span>
               </div>
             </div>
-            <p className="text-[14px] leading-[21px]" style={{ color: "var(--ink-2)" }}>
-              {nextPlan.week_summary ||
-                "This plan predates the current format — regenerate to get a week summary and day-by-day sessions."}
-            </p>
-            {nextPlan.revision_note && (
-              <p className="text-[12px] leading-[17px]" style={{ color: "var(--ink-3)" }}>
-                Revised{nextPlan.revised_at ? ` ${relativeTime(nextPlan.revised_at, now)}` : ""} — you
-                asked: <span className="italic">&ldquo;{nextPlan.revision_note}&rdquo;</span>
-              </p>
-            )}
-            {runnerContext?.injuries && (
-              <p className="text-[13px] leading-[18px]" style={{ color: "var(--warn)" }}>
-                Working around: {runnerContext.injuries}
-              </p>
-            )}
+            <WeekSummarySection
+              plan={nextPlan}
+              days={nextDays}
+              now={now}
+              runnerContext={runnerContext}
+            />
           </section>
 
           {nextWeekRows.length > 0 ? (
@@ -418,11 +503,11 @@ export default async function PlanPage({
               <span className="overline" style={{ color: "var(--ink-2)" }}>
                 Training
               </span>
-              <p className="whitespace-pre-wrap text-[14px] leading-[21px]">
+              <p className="line-clamp-4 whitespace-pre-wrap text-[14px] leading-[21px]">
                 {nextPlan.training_plan_text}
               </p>
               <p className="text-[13px]" style={{ color: "var(--ink-2)" }}>
-                Regenerate to get the day-by-day table and editing.
+                Regenerate for day-by-day editing.
               </p>
             </section>
           )}

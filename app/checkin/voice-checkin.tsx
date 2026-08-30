@@ -119,8 +119,8 @@ export function VoiceCheckin({ revising = false }: { revising?: boolean }) {
       <div className="card flex flex-col gap-3 p-4">
         <p className="text-[13px] leading-[19px]" style={{ color: "var(--ink-2)" }}>
           {revising
-            ? "This week's check-in is done. The coach will quickly run through what's recorded — last week's feedback and next week's plan — then change whatever you ask."
-            : "A five-minute voice meeting: how the week went, what's coming up, which nights need no cooking — then the coach confirms next week's training and meals with you before anything changes."}
+            ? "Redo this week's check-in by voice."
+            : "A short voice meeting to plan next week."}
         </p>
         {phase === "done" && (
           <p

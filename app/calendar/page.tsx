@@ -72,7 +72,7 @@ export default async function CalendarPage({
         <section className="card flex flex-col items-start gap-3 p-5">
           <h2 className="text-[17px] font-semibold">Connect your calendar</h2>
           <p className="text-[14px]" style={{ color: "var(--ink-2)" }}>
-            The planner reads the next 14 days to work around travel and busy evenings.
+            Reads 14 days ahead to plan around travel.
           </p>
           <Link href="/settings#connections" className="btn-primary">
             Open Settings
@@ -131,12 +131,6 @@ export default async function CalendarPage({
           ))}
         </section>
       )}
-
-      <footer className="pb-2 text-[12px] leading-[17px]" style={{ color: "var(--ink-3)" }}>
-        Days are marked as travel when an event mentions travel, flights, trains or hotels, or
-        spans multiple days. The calendar is read-only here — it is an input to the planner,
-        not a destination.
-      </footer>
     </main>
   );
 }

@@ -119,6 +119,17 @@ Roles (utility classes in `app/globals.css`):
 
 Headings carry −0.01em tracking globally.
 
+**No paragraphs on main screens.** The four tab screens and the secondary
+screens (Activity, Calendar, Check-in) never run a static explainer over two
+or more lines. Static UI copy — footers, sub-lines, empty-state prose — is
+deleted outright, replaced with a visual (chip, disc, stat) where one carries
+the same meaning, or condensed to one short line (≤ 8 words where possible).
+Generated coaching content (week_summary, session detail/why, the revision
+note, recipe method, injury read-back) is never deleted, but is contained:
+tucked behind an existing disclosure (an expand-on-tap row, the Nutrition
+screen's `<details>` "Recipe" pattern) or truncated to one or two lines with
+the full text one tap away. Banners stay one line, always actionable.
+
 ## 4. Spacing, radius, elevation
 
 - 4 px base grid. Screen padding 16 px; card padding 16 px; section gap 24 px; card gap 12 px.
@@ -153,6 +164,7 @@ Headings carry −0.01em tracking globally.
 | Dinner card (Dashboard) | rendered in `app/page.tsx` | V2: shown ONLY when today is an away day with a planned prep-ahead meal; links to Nutrition. Home days show no meal card. |
 | Volume lookback card | rendered in `app/page.tsx` | V2: 7-day running km (run-only, U1) in fingerpost lettering + planned-sessions-done summary; opens `/activities`. |
 | Quick actions grid | rendered in `app/page.tsx` | V2: 2x2 — Log a session (sheet), Add a goal race (`/settings#race`), Add a check-in (`/checkin`), Update training plan (`/plan?edit=1`). |
+| Week summary strip | `.stat-strip` utility, rendered in `app/plan/page.tsx` | A one-line km/sessions readout (summed from `training_plan_json`, never parsed from `week_summary`) standing in for the coach's paragraph; sits in a `<details>`/`<summary>` disclosure ("Summary" / "Close") — the same pattern as the Nutrition recipe cards — that reveals `week_summary` and the revision-note quote on tap. Falls back to a short "Old plan format" line when the plan predates structured days. |
 | Plan week toggle | `app/plan/week-toggle.tsx` | V3: a segmented control — "This week" / "Next week", 44 px targets, each segment carries a waymark dot (accent when active, like the tab bar's active marker). Opens on This week; `?edit=1` opens on Next week. Client-side only — both weeks are fetched server-side in `app/plan/page.tsx` and handed down as already-rendered content; the inactive panel is `hidden`, not unmounted, so Next week's edit state survives a glance at This week. |
 | This week review | `app/plan/this-week-review.tsx` | V3: the route card as a REVIEW surface, read-only, chronological Monday→Sunday (no reordering). Past days show the planned session, a Done/Missed chip (colour + text, from the unchanged `sessionDone`/`completedCategories` matching in `components/data.ts`) and a "Logged: …" line built from the merged Strava/manual activity stream (type, distance, duration) — shown even when it disagrees with the plan, so a mismatch is visible rather than hidden. Rest days show no Done/Missed chip (nothing to complete) but still surface a Logged line if cross-training happened. Today is ringed in accent, no completion chip (the day isn't over). Future days render as plain upcoming entries. No edit affordances anywhere in this view. |
 | Next week plan | `app/plan/next-week-plan.tsx` | V3: the route card as the PLANNING surface — the only place batch-edit lives. Same node \| date \| detail \| volume rows as before, tap to expand the full session card. Edit mode (ported from the retired single-week `plan-table.tsx`, behaviour unchanged): per-row session-type quick-pick + free-text (`addPendingChange`), whole-week instruction, inline check-in note (`savePendingCheckin`), pending list with per-item Remove and Clear all, ONE "Apply changes — regenerate" → `POST /api/plan/generate` `{ apply_pending: true, week_start_date: <next Monday> }` (~30 s state, 429/500 surfaced). Deep-linked from the Dashboard via `?edit=1` (opens on the Next week tab with edit mode already on). Empty state (no plan yet): "generates automatically on Sunday evening… you can also generate it now" + `GeneratePlanButton`. |
