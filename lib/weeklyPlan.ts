@@ -423,8 +423,18 @@ async function loadAppliedCheckin(weekStart: string): Promise<AppliedCheckin | n
   return { notes, noCookDates, mealDates };
 }
 
-function checkinBlockFor(checkin: AppliedCheckin): string {
+function checkinBlockFor(checkin: AppliedCheckin, mealsExplicit: boolean): string {
   const lines = [...checkin.notes];
+  if (mealsExplicit) {
+    // Meal days are fully defined above; restating stale meal/no-cook
+    // agreements here would contradict them and confuse the model.
+    return lines.length > 0
+      ? `
+
+STANDING AGREEMENTS FROM THE RUNNER'S SUNDAY CHECK-IN (already confirmed — honour ALL of these in this plan, whatever else changes):
+${lines.join("\n")}`
+      : "";
+  }
   if (checkin.mealDates.length > 0) {
     lines.push(
       `- Prep-ahead dinners on exactly: ${checkin.mealDates.map(formatDateShort).join(", ")} (already reflected in the meal days above).`
@@ -910,10 +920,11 @@ export async function generateWeeklyPlan(options?: {
   // generation path, so the Sunday cron and later revisions keep honouring
   // what was agreed by voice.
   const checkin = options?.fromVoiceCheckin ? null : await loadAppliedCheckin(context.weekStart);
-  const checkinBlock = checkin ? checkinBlockFor(checkin) : "";
 
   // Explicit meal nights (call option first, then the standing check-in)
-  // replace the away-derived meal days wholesale.
+  // replace the away-derived meal days wholesale — and SUPERSEDE any earlier
+  // no-cook agreement: the runner's latest explicit list is the whole truth
+  // (a stale no-cook fold must not strike freshly requested meal nights).
   const explicitMealDates = options?.mealDates?.length
     ? options.mealDates
     : checkin?.mealDates.length
@@ -924,8 +935,12 @@ export async function generateWeeklyPlan(options?: {
     context.awayDates = [...new Set(explicitMealDates.filter((d) => week.has(d)))].sort();
     context.mealDatesExplicit = true;
   }
+  const checkinBlock = checkin ? checkinBlockFor(checkin, explicitMealDates !== null) : "";
 
-  const skipMeals = new Set([...(options?.skipMealDates ?? []), ...(checkin?.noCookDates ?? [])]);
+  const skipMeals = new Set([
+    ...(options?.skipMealDates ?? []),
+    ...(explicitMealDates ? [] : (checkin?.noCookDates ?? [])),
+  ]);
   if (skipMeals.size > 0) {
     context.awayDates = context.awayDates.filter((d) => !skipMeals.has(d));
   }
