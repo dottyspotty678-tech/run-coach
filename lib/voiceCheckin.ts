@@ -45,6 +45,8 @@ export type VoiceBriefing = {
   planWeek: string;
   /** Week the feedback describes — the week containing today. */
   describedWeek: string;
+  /** Today's London date — coach changes may target today onwards. */
+  todayIso: string;
   /** "revise" when this week's check-in is already applied; "coach" for Ask Coach (§3.12). */
   mode: "full" | "revise" | "coach";
   dynamicVariables: Record<string, string>;
@@ -111,13 +113,27 @@ export async function buildVoiceBriefing(
           .join("\n")
       : "No sessions recorded in the last 7 days.";
 
+  // Sunday-evening split (coach only): the boundary week is next week but
+  // today still belongs to the current week — brief its remaining days too so
+  // "change today's session" is answerable.
+  const splitWeek = session === "coach" && describedWeek !== planWeek;
+  const currentPlan = splitWeek ? await getPlanForWeek(describedWeek) : null;
+  const currentRemainder = Array.isArray(currentPlan?.training_plan_json)
+    ? currentPlan.training_plan_json.filter(isTrainingDay).filter((d) => d.date >= today)
+    : [];
+
   const trainingDays = Array.isArray(plan?.training_plan_json)
     ? plan.training_plan_json.filter(isTrainingDay)
     : [];
   const meals = parseAwayMeals(plan) ?? [];
+  const currentLines = currentRemainder.map(
+    (d) =>
+      `${formatDayShort(d.date)} (this week${d.date === today ? ", TODAY" : ""}): ${d.title}${d.duration_min > 0 ? ` (${d.duration_min} min)` : ""}`
+  );
   const plannedWeek =
-    trainingDays.length > 0
+    trainingDays.length > 0 || currentLines.length > 0
       ? [
+          ...currentLines,
           plan?.week_summary ?? "",
           ...trainingDays.map(
             (d) =>
@@ -147,6 +163,7 @@ export async function buildVoiceBriefing(
     session,
     planWeek,
     describedWeek,
+    todayIso: today,
     mode,
     dynamicVariables: {
       today: formatDateShort(today),
@@ -282,7 +299,7 @@ RULES:
 - spoken_summary is heard, not read: short sentences, no formatting, UK English, dates like "15 Aug".${
     briefing.session === "coach"
       ? `
-- THIS IS A MID-WEEK COACH SESSION: change only what the runner raised, and only days from today onward — never rewrite days already trained. Leave week_feedback_note EMPTY unless they described how training is feeling (that note is a mid-week update for the week in progress). Carry injuries_current over verbatim unless they reported a change.`
+- THIS IS A COACH SESSION: change only what the runner raised, and only days from today onward — never rewrite days already trained. You may target ANY date from today through the end of the plan week above, including today itself and the remaining days of the week in progress (dates before ${briefing.planWeek} are applied to the current week's plan). Leave week_feedback_note EMPTY unless they described how training is feeling (that note is a mid-week update for the week in progress). Carry injuries_current over verbatim unless they reported a change.`
       : ""
   }${
     briefing.mode === "revise"
@@ -316,6 +333,11 @@ export async function analyseCheckin(
 
   // Clamp model-supplied dates to the plan week — anything else is dropped.
   const valid = new Set(weekDates(briefing.planWeek));
+  if (briefing.session === "coach") {
+    for (const d of weekDates(mondayOf(briefing.todayIso))) {
+      if (d >= briefing.todayIso) valid.add(d);
+    }
+  }
   const proposal: CheckinProposal = {
     ...parsed,
     plan_changes: parsed.plan_changes.map((c) => ({
@@ -482,17 +504,38 @@ export async function applyCheckin(proposalId: string): Promise<{ spoken_result:
     done.push(`added ${eventCount} event${eventCount === 1 ? "" : "s"} to your calendar`);
   }
 
-  // 4. One revision regenerates training + meals when anything changed. New
-  // calendar events count as changes — travel/away days shift the plan.
-  const hasChanges =
-    proposal.plan_changes.length > 0 ||
+  // 4. Revisions regenerate training + meals when anything changed. A coach
+  // session may target the week IN PROGRESS as well as the plan week (the
+  // Sunday-evening split, where today belongs to the outgoing week): dated
+  // changes before the plan week revise the current week's plan — which is
+  // what the Dashboard hero reads — and everything else revises the plan week.
+  const currentWeek = String(row.described_week);
+  const isCoach = meetingMode === "coach";
+  const currentWeekChanges =
+    isCoach && currentWeek !== weekStart
+      ? proposal.plan_changes.filter((c) => c.date !== null && c.date < weekStart)
+      : [];
+  const planWeekChanges = proposal.plan_changes.filter((c) => !currentWeekChanges.includes(c));
+
+  const changeLine = (c: CheckinProposal["plan_changes"][number]) =>
+    c.date ? `- ${formatDayShort(c.date)} (${c.date}): ${c.instruction}` : `- General: ${c.instruction}`;
+
+  if (currentWeekChanges.length > 0) {
+    await generateWeeklyPlan({
+      revisionNote: `From an Ask Coach session — apply ALL of these to the week in progress (days already trained stay exactly as stored):\n${currentWeekChanges.map(changeLine).join("\n")}`,
+      targetWeekStart: currentWeek,
+      fromVoiceCheckin: true,
+    });
+    done.push("updated this week's remaining sessions");
+  }
+
+  const hasPlanWeekChanges =
+    planWeekChanges.length > 0 ||
     proposal.no_cook_dates.length > 0 ||
     proposal.meal_dates.length > 0 ||
     eventCount > 0;
-  if (hasChanges) {
-    const lines = proposal.plan_changes.map((c) =>
-      c.date ? `- ${formatDayShort(c.date)} (${c.date}): ${c.instruction}` : `- General: ${c.instruction}`
-    );
+  if (hasPlanWeekChanges) {
+    const lines = planWeekChanges.map(changeLine);
     if (proposal.meal_dates.length > 0) {
       lines.push(
         `- Prep-ahead dinners on exactly: ${proposal.meal_dates.map(formatDateShort).join(", ")} — these dates fully define the meal plan.`
@@ -514,6 +557,7 @@ export async function applyCheckin(proposalId: string): Promise<{ spoken_result:
     });
     done.push("updated next week's training and meal plan");
   }
+  const hasChanges = currentWeekChanges.length > 0 || hasPlanWeekChanges;
 
   await supabase
     .from("voice_checkins")
