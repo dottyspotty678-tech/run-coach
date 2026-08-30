@@ -170,9 +170,16 @@ function weekRangeLabel(weekStart: string): string {
   return startMonth === endMonth ? `${startDay}–${endDay} ${endMonth}` : `${startLabel} – ${endLabel}`;
 }
 
-/** A raw activity type ("TrailRun", "easy", "football") as a fingerpost-friendly label. */
+/** A raw activity type ("TrailRun", "easy", "football") matched against the
+ *  plan's fixed session types when possible — feeds both the label and the
+ *  logged line's waymark-dot colour below. */
+function matchedSessionType(type: string) {
+  return SESSION_TYPES.find((t) => t === type.toLowerCase()) ?? null;
+}
+
+/** A raw activity type as a fingerpost-friendly label. */
 function humaniseActivityType(type: string): string {
-  const known = SESSION_TYPES.find((t) => t === type.toLowerCase());
+  const known = matchedSessionType(type);
   if (known) return SESSION_META[known].label;
   return type.replace(/([a-z0-9])([A-Z])/g, "$1 $2").replace(/^./, (c) => c.toUpperCase());
 }
@@ -190,8 +197,13 @@ function actualEntriesFor(date: string, activities: ActivityRow[]): ReviewRow["a
       ]
         .filter((v): v is string => v !== null)
         .join(" · ");
-      const label = humaniseActivityType(a.type) + (a.source === "manual" ? " (logged manually)" : "");
-      return { label, figures };
+      const known = matchedSessionType(a.type);
+      return {
+        label: humaniseActivityType(a.type),
+        figures,
+        color: known ? SESSION_META[known].color : "var(--ink-3)",
+        manual: a.source === "manual",
+      };
     });
 }
 
@@ -337,7 +349,9 @@ export default async function PlanPage({
         isToday: day.date === today,
         isPast,
         done: sessionDone(day.session_type, done.get(day.date)),
-        actual: isPast ? actualEntriesFor(day.date, activities) : [],
+        // Today's already-logged activities matter too (brief §1) — only
+        // strictly-future days have nothing to show yet.
+        actual: day.date <= today ? actualEntriesFor(day.date, activities) : [],
       };
     });
 
