@@ -435,6 +435,36 @@ export async function getRunnerContext(): Promise<RunnerContext | null> {
   }
 }
 
+export type AppliedCheckinRow = {
+  week_start_date: string;
+  applied_at: string;
+};
+
+/**
+ * The latest APPLIED voice check-in targeting any of the given plan weeks
+ * (§3.12) — drives the Dashboard's done state and the Check-in screen's
+ * revise mode. Null when none (or pre-migration).
+ */
+export async function getLatestAppliedCheckin(
+  weekStarts: string[]
+): Promise<AppliedCheckinRow | null> {
+  try {
+    const supabase = createServiceClient();
+    const { data, error } = await supabase
+      .from("voice_checkins")
+      .select("week_start_date, applied_at")
+      .in("week_start_date", weekStarts)
+      .eq("status", "applied")
+      .order("applied_at", { ascending: false })
+      .limit(1)
+      .maybeSingle();
+    if (error || !data) return null;
+    return data as AppliedCheckinRow;
+  } catch {
+    return null;
+  }
+}
+
 export type WeeklyFeedbackRow = {
   /** Monday of the week the note describes (YYYY-MM-DD). */
   week_start_date: string;

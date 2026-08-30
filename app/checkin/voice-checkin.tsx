@@ -23,7 +23,7 @@ async function post(path: string, body: unknown): Promise<Record<string, unknown
   return json;
 }
 
-export function VoiceCheckin() {
+export function VoiceCheckin({ revising = false }: { revising?: boolean }) {
   const router = useRouter();
   const [phase, setPhase] = useState<Phase>("idle");
   const [agentMode, setAgentMode] = useState<"speaking" | "listening">("listening");
@@ -118,9 +118,9 @@ export function VoiceCheckin() {
     return (
       <div className="card flex flex-col gap-3 p-4">
         <p className="text-[13px] leading-[19px]" style={{ color: "var(--ink-2)" }}>
-          A five-minute voice meeting: how the week went, what&apos;s coming up, which nights
-          need no cooking — then the coach confirms next week&apos;s training and meals with you
-          before anything changes.
+          {revising
+            ? "This week's check-in is done. The coach will quickly run through what's recorded — last week's feedback and next week's plan — then change whatever you ask."
+            : "A five-minute voice meeting: how the week went, what's coming up, which nights need no cooking — then the coach confirms next week's training and meals with you before anything changes."}
         </p>
         {phase === "done" && (
           <p
@@ -139,7 +139,7 @@ export function VoiceCheckin() {
           </p>
         )}
         <button type="button" className="btn-primary" onClick={start}>
-          {phase === "idle" ? "Start Sunday check-in" : "Start again"}
+          {phase !== "idle" ? "Start again" : revising ? "Revise check-in" : "Start Sunday check-in"}
         </button>
       </div>
     );

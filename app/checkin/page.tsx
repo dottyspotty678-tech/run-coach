@@ -1,11 +1,18 @@
 import Link from "next/link";
 import {
+  addDays,
   formatDateShort,
+  londonDateOf,
   mondayOf,
   relativeTime,
   todayISO,
 } from "@/components/dates";
-import { getInjuryHistory, getRecentFeedback, getRunnerContext } from "@/components/data";
+import {
+  getInjuryHistory,
+  getLatestAppliedCheckin,
+  getRecentFeedback,
+  getRunnerContext,
+} from "@/components/data";
 import { IconChevronLeft } from "@/components/icons";
 import { FeedbackForm, InjuriesForm } from "./checkin-forms";
 import { InjuryHistory } from "./injury-history";
@@ -26,6 +33,10 @@ export default async function CheckinPage() {
   // boundary week: on Sunday evening the app shows next week, but the note is
   // about the week that just happened.
   const describedWeek = mondayOf(today);
+
+  // §3.12: a check-in run today targets the week AFTER the one containing
+  // today; an applied one flips the meeting into revise mode.
+  const appliedCheckin = await getLatestAppliedCheckin([addDays(describedWeek, 7)]);
 
   const [context, feedback, injuryHistory] = await Promise.all([
     getRunnerContext(),
@@ -55,10 +66,17 @@ export default async function CheckinPage() {
 
       {/* Sunday voice meeting (§3.12): the one-stop check-in. */}
       <section className="flex flex-col gap-2">
-        <h2 className="overline" style={{ color: "var(--ink-2)" }}>
-          Sunday meeting
-        </h2>
-        <VoiceCheckin />
+        <div className="flex items-baseline justify-between">
+          <h2 className="overline" style={{ color: "var(--ink-2)" }}>
+            Sunday meeting
+          </h2>
+          {appliedCheckin && (
+            <span className="text-[12px] font-semibold" style={{ color: "var(--ok)" }}>
+              Done · {formatDateShort(londonDateOf(appliedCheckin.applied_at))}
+            </span>
+          )}
+        </div>
+        <VoiceCheckin revising={appliedCheckin !== null} />
       </section>
 
       {/* Manual fallback: the same inputs, typed. */}

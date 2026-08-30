@@ -7,8 +7,10 @@ import { isTrainingDay, parseAwayMeals } from "@/lib/planTypes";
 import {
   awayDatesForRange,
   getEventsForWeek,
+  getLatestAppliedCheckin,
   getPlanForWeek,
   getRecentActivities,
+  getRecentFeedback,
   getRunnerContext,
   isRun,
 } from "@/components/data";
@@ -38,6 +40,8 @@ export type VoiceBriefing = {
   planWeek: string;
   /** Week the feedback describes — the week containing today. */
   describedWeek: string;
+  /** "revise" when this week's check-in is already applied (§3.12). */
+  mode: "full" | "revise";
   dynamicVariables: Record<string, string>;
 };
 
@@ -51,12 +55,18 @@ export async function buildVoiceBriefing(now = new Date()): Promise<VoiceBriefin
   const planWeek = addDays(describedWeek, 7);
   const planDates = weekDates(planWeek);
 
-  const [activities, context, plan, events] = await Promise.all([
+  const [activities, context, plan, events, appliedCheckin, recentFeedback] = await Promise.all([
     getRecentActivities(7),
     getRunnerContext(),
     getPlanForWeek(planWeek),
     getEventsForWeek(planWeek),
+    getLatestAppliedCheckin([planWeek]),
+    getRecentFeedback(3),
   ]);
+  const mode: "full" | "revise" = appliedCheckin ? "revise" : "full";
+  const recordedFeedback =
+    recentFeedback.find((f) => f.week_start_date === describedWeek)?.feedback ??
+    "none recorded yet";
 
   const weekReview =
     activities.length > 0
@@ -106,8 +116,15 @@ export async function buildVoiceBriefing(now = new Date()): Promise<VoiceBriefin
   return {
     planWeek,
     describedWeek,
+    mode,
     dynamicVariables: {
       today: formatDateShort(today),
+      greeting:
+        mode === "revise"
+          ? "Evening — you've already done this week's check-in. Want me to run through what's set and change anything?"
+          : "Evening — got a few minutes for your Sunday check-in? Let's start with the week you've just had.",
+      meeting_mode: mode,
+      recorded_feedback: recordedFeedback,
       week_review: weekReview,
       current_injuries: context?.injuries?.trim() || "none reported",
       planned_week: plannedWeek,
@@ -221,7 +238,12 @@ RULES:
 - no_cook_dates: only dates the runner explicitly does not need food planned for. These remove that day's prep-ahead meal.
 - calendar_additions: extract each concrete, dated commitment from the schedule answer that the calendar context does not already show (dinners, trips, freed evenings are NOT events — only real commitments). Mark trips/nights away is_travel true with the location if given. These are written to the runner's calendar and feed travel-day and away-day planning, so accuracy beats completeness. Mention in spoken_summary anything you're adding to the calendar.
 - Never invent commitments, sessions or injuries not in the context or answers. Never medical advice, calories or macros.
-- spoken_summary is heard, not read: short sentences, no formatting, UK English, dates like "15 Aug".`;
+- spoken_summary is heard, not read: short sentences, no formatting, UK English, dates like "15 Aug".${
+    briefing.mode === "revise"
+      ? `
+- THIS IS A REVISE MEETING: a check-in for this week is already applied. Propose only what the runner asked to change now. Leave week_feedback_note EMPTY unless they revisited how the week felt (empty keeps the recorded note). Carry injuries_current over verbatim unless they changed it. calendar_additions holds only NEW commitments from this conversation — previously added events are kept automatically.`
+      : ""
+  }`;
 }
 
 export async function analyseCheckin(
@@ -266,7 +288,9 @@ export async function analyseCheckin(
     .insert({
       week_start_date: briefing.planWeek,
       described_week: briefing.describedWeek,
-      answers_json: answers,
+      // mode rides inside answers_json (no migration): apply reads it to
+      // decide whether calendar events replace (full) or append (revise).
+      answers_json: { ...answers, mode: briefing.mode },
       proposal_json: proposal,
     })
     .select("id")
@@ -306,16 +330,21 @@ function londonToUtcIso(date: string, time: string): string {
  */
 async function writeCalendarAdditions(
   weekStart: string,
-  additions: CheckinProposal["calendar_additions"]
+  additions: CheckinProposal["calendar_additions"],
+  replace: boolean
 ): Promise<number> {
   const supabase = createServiceClient();
   const weekEnd = addDays(weekStart, 7);
-  await supabase
-    .from("calendar_events")
-    .delete()
-    .like("external_id", "checkin:%")
-    .gte("start_time", londonToUtcIso(weekStart, "00:00"))
-    .lt("start_time", londonToUtcIso(weekEnd, "00:00"));
+  // Full meeting: this week's check-in events are replaced wholesale.
+  // Revise meeting: earlier events stand; new ones append.
+  if (replace) {
+    await supabase
+      .from("calendar_events")
+      .delete()
+      .like("external_id", "checkin:%")
+      .gte("start_time", londonToUtcIso(weekStart, "00:00"))
+      .lt("start_time", londonToUtcIso(weekEnd, "00:00"));
+  }
   if (additions.length === 0) return 0;
 
   const rows = additions.map((e) => {
@@ -391,7 +420,13 @@ export async function applyCheckin(proposalId: string): Promise<{ spoken_result:
 
   // 3. Calendar first (idempotent per week), so regeneration sees the events.
   const weekStart = String(row.week_start_date);
-  const eventCount = await writeCalendarAdditions(weekStart, proposal.calendar_additions);
+  const meetingMode =
+    (row.answers_json as Record<string, unknown> | null)?.mode === "revise" ? "revise" : "full";
+  const eventCount = await writeCalendarAdditions(
+    weekStart,
+    proposal.calendar_additions,
+    meetingMode === "full"
+  );
   if (eventCount > 0) {
     done.push(`added ${eventCount} event${eventCount === 1 ? "" : "s"} to your calendar`);
   }

@@ -61,3 +61,14 @@ and a no-cook day stays meal-free however many times the week regenerates.
 
 The typed forms on the Check-in screen remain as the fallback and write to the
 same tables.
+
+## Done state and revise mode
+
+An applied `voice_checkins` row for the target week is the done signal: the
+Dashboard's check-in tile shows "Check-in done" with the date (green tick),
+and the Check-in screen's button becomes "Revise check-in". A revise meeting
+skips the three parts — the coach reads back the recorded feedback and next
+week's plan, asks what to change, and submits the merged answers. Revise
+proposals leave the recorded feedback note untouched unless revisited, and
+append calendar events rather than replacing the week's earlier ones. The
+meeting mode travels inside `answers_json.mode`.
