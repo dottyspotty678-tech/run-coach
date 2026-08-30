@@ -230,6 +230,26 @@ h3 {
   padding-left: 12px;
 }
 
+/* Stat strip: the week at a glance — total km and session count in the
+   route-card mono, replacing an open paragraph above the fold. Sits in a
+   details/summary disclosure ("Summary" / "Close") so the coach's full
+   week_summary prose moves one tap away instead of running open on the
+   screen (docs/DESIGN.md "no paragraphs on main screens"). */
+.stat-strip {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.stat-strip-sep {
+  align-self: center;
+  width: 3px;
+  height: 3px;
+  flex-shrink: 0;
+  border-radius: 999px;
+  background: var(--ink-3);
+}
+
 /* The route line: a controlled dashed vertical path threading the
    plan's waymark nodes (repeating gradient = even 4/5 dashes). */
 .route-line {

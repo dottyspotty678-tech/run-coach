@@ -95,7 +95,11 @@ export default async function CheckinPage() {
         {previousNotes.length > 0 && (
           <div className="flex flex-col gap-1.5 pt-1">
             {previousNotes.map((note) => (
-              <p key={note.week_start_date} className="text-[13px] leading-[19px]" style={{ color: "var(--ink-3)" }}>
+              <p
+                key={note.week_start_date}
+                className="line-clamp-2 text-[13px] leading-[19px]"
+                style={{ color: "var(--ink-3)" }}
+              >
                 <span className="font-semibold">Week of {formatDateShort(note.week_start_date)}:</span>{" "}
                 {note.feedback}
               </p>
@@ -118,7 +122,7 @@ export default async function CheckinPage() {
         </div>
         {/* Read-back: exactly what the planner believes right now. */}
         <p
-          className="rounded-xl px-3 py-2.5 text-[13px] font-medium"
+          className="truncate rounded-xl px-3 py-2.5 text-[13px] font-medium"
           style={
             context?.injuries
               ? { color: "var(--warn)", background: "var(--warn-soft)" }
@@ -126,7 +130,7 @@ export default async function CheckinPage() {
           }
         >
           {context?.injuries
-            ? `The planner is working around: ${context.injuries}`
+            ? `Working around: ${context.injuries}`
             : "The planner believes you are injury-free."}
         </p>
         <div className="card p-4">
@@ -136,12 +140,6 @@ export default async function CheckinPage() {
 
       {/* Past injuries (round 2, U5) — visually secondary, rarely changes. */}
       <InjuryHistory items={injuryHistory} />
-
-      <footer className="pb-2 text-[12px] leading-[17px]" style={{ color: "var(--ink-3)" }}>
-        Everything here feeds the next plan generation — current injuries shape which sessions
-        are safe now, past injuries keep the ramp cautious, and the weekly note nudges how
-        hard the coach pushes.
-      </footer>
     </main>
   );
 }

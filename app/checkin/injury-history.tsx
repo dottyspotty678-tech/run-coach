@@ -75,8 +75,7 @@ export function InjuryHistory({ items }: { items: InjuryRow[] }) {
         )}
       </div>
       <p className="-mt-1 text-[12px]" style={{ color: "var(--ink-3)" }}>
-        Old trouble the planner stays structurally cautious about — separate from anything
-        current above.
+        Kept separate from current injuries above.
       </p>
 
       {adding && (

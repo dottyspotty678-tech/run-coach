@@ -115,8 +115,7 @@ export default async function ActivityPage({
         <section className="card flex flex-col items-start gap-3 p-5">
           <h2 className="text-[17px] font-semibold">Connect Strava</h2>
           <p className="text-[14px]" style={{ color: "var(--ink-2)" }}>
-            Your recent running drives the weekly plan. Connect Strava to sync the last 30 days —
-            or log sessions manually above.
+            Connect Strava, or log sessions manually above.
           </p>
           <Link href="/settings#connections" className="btn-primary">
             Open Settings

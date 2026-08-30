@@ -150,7 +150,7 @@ export default async function NutritionPage() {
         <section className="card flex flex-col items-start gap-3 p-5">
           <h2 className="text-[20px] font-semibold">No plan yet for this week</h2>
           <p className="text-[14px]" style={{ color: "var(--ink-2)" }}>
-            Away-day recipes and the shopping list arrive with the weekly plan.
+            Recipes and the shopping list arrive with the plan.
           </p>
           <GeneratePlanButton hasPlan={false} />
         </section>
@@ -161,8 +161,7 @@ export default async function NutritionPage() {
             className="rounded-xl px-3 py-2 text-[13px] font-medium"
             style={{ color: "var(--warn)", background: "var(--warn-soft)" }}
           >
-            This plan predates the away-day meal-prep format — regenerate from the Plan tab to
-            get prep-ahead recipes for away days.
+            Old meal format — regenerate on the Plan tab.
           </p>
           {(legacyMeals ?? []).map((meal) => (
             <LegacyMealCard key={meal.date} meal={meal} />
@@ -179,10 +178,6 @@ export default async function NutritionPage() {
       ) : orderedAway.length === 0 ? (
         <section className="card p-5">
           <p className="text-[15px] font-medium">No away days coming up — nothing to prep.</p>
-          <p className="mt-1 text-[13px]" style={{ color: "var(--ink-2)" }}>
-            When the calendar shows a hotel stay or a trip outside Manchester or London, the
-            week&apos;s plan adds prep-ahead recipes and a shopping list here.
-          </p>
         </section>
       ) : (
         <>
@@ -191,9 +186,6 @@ export default async function NutritionPage() {
             <h2 className="overline" style={{ color: "var(--ink-2)" }}>
               Planned dinners
             </h2>
-            <p className="-mt-1 text-[12px]" style={{ color: "var(--ink-3)" }}>
-              Prep ahead at home — take along, reheat or eat cold.
-            </p>
             {orderedAway.map((meal) => (
               <AwayMealCard key={meal.date} meal={meal} isToday={meal.date === today} />
             ))}

@@ -350,8 +350,7 @@ export function NextWeekPlan({
           <div>
             <h3 className="text-[15px] font-semibold">Pending changes</h3>
             <p className="mt-0.5 text-[12px]" style={{ color: "var(--ink-3)" }}>
-              Tap a day above to queue a change. Nothing regenerates until you apply — the
-              queue is saved, so it survives leaving this screen.
+              Tap a day above to queue a change — nothing regenerates until you apply.
             </p>
           </div>
 
@@ -439,11 +438,6 @@ export function NextWeekPlan({
               "Apply changes — regenerate"
             )}
           </button>
-          {pendingChanges.length === 0 && (
-            <p className="-mt-1 text-[12px]" style={{ color: "var(--ink-3)" }}>
-              Queue at least one change to apply. A saved note rides along with the next apply.
-            </p>
-          )}
           {applyError && (
             <p
               className="rounded-xl px-3 py-2 text-[13px] font-medium"

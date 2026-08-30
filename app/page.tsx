@@ -227,8 +227,7 @@ export default async function DashboardPage() {
           <section className="card flex flex-col items-start gap-3 p-5">
             <h2 className="text-[20px] font-semibold">No plan yet for this week</h2>
             <p className="text-[14px]" style={{ color: "var(--ink-2)" }}>
-              Generate the week&apos;s training and away-day meals from your calendar and recent
-              running.
+              Built from your calendar and recent running.
             </p>
             <GeneratePlanButton hasPlan={false} />
           </section>
@@ -277,7 +276,7 @@ export default async function DashboardPage() {
               {heroPlan?.training_plan_text}
             </p>
             <p className="text-[13px]" style={{ color: "var(--ink-2)" }}>
-              This plan predates day-by-day sessions — regenerate from the Plan tab to get them.
+              Old plan format — regenerate on the Plan tab.
             </p>
             <Link
               href="/plan"
@@ -304,7 +303,7 @@ export default async function DashboardPage() {
             </div>
             <h3 className="mt-1.5 text-[17px] font-semibold leading-6">{dinner.recipe_name}</h3>
             <p className="mt-1 text-[13px]" style={{ color: "var(--ink-2)" }}>
-              Prepped ahead — recipe on the Nutrition tab
+              Prepped ahead — recipe on Nutrition
             </p>
           </Link>
         )}
