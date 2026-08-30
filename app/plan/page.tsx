@@ -25,13 +25,11 @@ import {
   getPendingChanges,
   getPlanForWeek,
   getRecentActivities,
-  getRunnerContext,
   isRun,
   sessionDone,
   travelDatesFromEvents,
   type ActivityRow,
   type CalendarEventRow,
-  type RunnerContext,
 } from "@/components/data";
 import { SESSION_META } from "@/components/session";
 import { GeneratePlanButton } from "@/components/generate-plan";
@@ -54,19 +52,25 @@ function volumeFor(day: TrainingDay): string {
 
 /** Week-at-a-glance figures for the stat strip — summed from the structured
  *  training days (never parsed from the coach's week_summary prose): total
- *  running km (same title+detail regex the Volume column already uses) and
- *  a count of non-rest sessions. */
-function weekStats(days: TrainingDay[] | null): { totalKm: number; sessionCount: number } | null {
+ *  weekly volume in minutes (duration_min covers every session type, unlike
+ *  km) and a count of non-rest sessions. */
+function weekStats(days: TrainingDay[] | null): { totalMin: number; sessionCount: number } | null {
   if (!days || days.length === 0) return null;
-  let totalKm = 0;
+  let totalMin = 0;
   let sessionCount = 0;
   for (const day of days) {
     if (day.session_type === "rest") continue;
     sessionCount += 1;
-    const km = `${day.title} ${day.detail}`.match(/(\d+(?:[.,]\d+)?)\s*km\b/i);
-    if (km) totalKm += Number(km[1].replace(",", "."));
+    totalMin += day.duration_min;
   }
-  return { totalKm, sessionCount };
+  return { totalMin, sessionCount };
+}
+
+/** 320 min → "5:20" (hours:minutes, tabular). */
+function formatHours(totalMin: number): string {
+  const h = Math.floor(totalMin / 60);
+  const m = totalMin % 60;
+  return `${h}:${String(m).padStart(2, "0")}`;
 }
 
 /**
@@ -80,13 +84,11 @@ function WeekSummarySection({
   plan,
   days,
   now,
-  runnerContext,
   showCheckinLink = false,
 }: {
   plan: WeeklyPlanRow;
   days: TrainingDay[] | null;
   now: Date;
-  runnerContext: RunnerContext | null;
   showCheckinLink?: boolean;
 }) {
   const stats = weekStats(days);
@@ -97,9 +99,9 @@ function WeekSummarySection({
           <summary className="flex min-h-[32px] cursor-pointer list-none items-center justify-between gap-2 [&::-webkit-details-marker]:hidden">
             <span className="stat-strip">
               <span className="text-[15px] font-semibold" style={{ color: "var(--ink)" }}>
-                <span className="tabular">{stats.totalKm.toFixed(0)}</span>{" "}
+                <span className="tabular">{formatHours(stats.totalMin)}</span>{" "}
                 <span className="text-[12px] font-medium" style={{ color: "var(--ink-2)" }}>
-                  km
+                  hrs
                 </span>
               </span>
               <span className="stat-strip-sep" aria-hidden="true" />
@@ -137,11 +139,6 @@ function WeekSummarySection({
       ) : (
         <p className="text-[13px]" style={{ color: "var(--ink-2)" }}>
           Old plan format — regenerate for full details.
-        </p>
-      )}
-      {runnerContext?.injuries && (
-        <p className="truncate text-[13px] leading-[18px]" style={{ color: "var(--warn)" }}>
-          Working around: {runnerContext.injuries}
         </p>
       )}
       {showCheckinLink && (
@@ -299,7 +296,6 @@ export default async function PlanPage({
     eventsThis,
     eventsNext,
     raceGoalRes,
-    runnerContext,
     pending,
   ] = await Promise.all([
     getPlanForWeek(thisWeekStart),
@@ -308,7 +304,6 @@ export default async function PlanPage({
     getEventsForWeek(thisWeekStart),
     getEventsForWeek(nextWeekStart),
     supabase.from("race_goal").select("*").eq("id", true).maybeSingle(),
-    getRunnerContext(),
     getPendingChanges(nextWeekStart),
   ]);
 
@@ -406,7 +401,6 @@ export default async function PlanPage({
               plan={thisPlan}
               days={thisDays}
               now={now}
-              runnerContext={runnerContext}
               showCheckinLink
             />
           </section>
@@ -486,7 +480,6 @@ export default async function PlanPage({
               plan={nextPlan}
               days={nextDays}
               now={now}
-              runnerContext={runnerContext}
             />
           </section>
 
