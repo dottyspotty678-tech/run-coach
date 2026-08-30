@@ -141,8 +141,10 @@ export function ShoppingList({
                       >
                         {isTicked && <IconTick size={13} strokeWidth={3} />}
                       </span>
+                      {/* One flowing line — the quantity shows in full and
+                          wraps with the item, never colliding with it. */}
                       <span
-                        className="min-w-0 flex-1 text-[15px] font-medium"
+                        className="min-w-0 flex-1 text-[15px] font-medium leading-[21px]"
                         style={
                           isTicked
                             ? { color: "var(--ink-3)", textDecoration: "line-through" }
@@ -150,16 +152,16 @@ export function ShoppingList({
                         }
                       >
                         {item.item}
+                        {item.quantity_note && (
+                          <span
+                            className="tabular text-[12.5px] font-medium"
+                            style={{ color: isTicked ? "var(--ink-3)" : "var(--ink-2)" }}
+                          >
+                            {" — "}
+                            {item.quantity_note}
+                          </span>
+                        )}
                       </span>
-                      {/* Volume column (V2 sketch): quantity on the right */}
-                      {item.quantity_note && (
-                        <span
-                          className="tabular shrink-0 text-[12px]"
-                          style={{ color: isTicked ? "var(--ink-3)" : "var(--ink-2)" }}
-                        >
-                          {item.quantity_note}
-                        </span>
-                      )}
                     </button>
                   </li>
                 );

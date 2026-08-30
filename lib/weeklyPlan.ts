@@ -332,11 +332,15 @@ const WEEKLY_PLAN_TOOL = {
               items: {
                 type: "object",
                 properties: {
-                  item: { type: "string" },
+                  item: {
+                    type: "string",
+                    description:
+                      "The bare ingredient name only — NO amounts, counts or preparation quantities here.",
+                  },
                   quantity: {
                     type: "string",
                     description:
-                      'Qualitative, e.g. "2 fillets", "1 bag"; natural weights like "500 g passata" are fine.',
+                      'ALL amount information, complete, in this one field — e.g. "2 fillets", "1 bag", "500 g". Never split or repeat quantity info into item.',
                   },
                 },
                 required: ["item", "quantity"],
@@ -358,11 +362,14 @@ const WEEKLY_PLAN_TOOL = {
         items: {
           type: "object",
           properties: {
-            item: { type: "string" },
+            item: {
+              type: "string",
+              description: "The bare item name only — no amounts here.",
+            },
             quantity_note: {
               type: "string",
               description:
-                'The quantity to buy — qualitative, e.g. "2 fillets", "1 bag", "small bunch".',
+                'ALL amount information to buy, complete, in this one field — e.g. "2 fillets", "1 bag", "small bunch". Never split or repeat it into item.',
             },
             category: { type: "string", enum: [...SHOPPING_CATEGORIES] },
           },
