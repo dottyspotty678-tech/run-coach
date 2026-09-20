@@ -292,3 +292,7 @@ from race_goal g
 where not exists (
   select 1 from races r where r.name = g.race_name and r.race_date = g.race_date
 );
+
+-- V3b migration (run this block in the Supabase SQL Editor)
+-- Runner-set weekly volume bands survive refreshes and re-seed the curve.
+alter table season_plan add column if not exists volume_override boolean not null default false;

@@ -581,8 +581,9 @@ export async function getNextRaces(fromDate: string, limit = 3): Promise<RaceRow
 
 export type SeasonWeekRow = SeasonWeek & { generated_at: string };
 
-const SEASON_COLUMNS =
-  "week_start_date, phase, block_position, volume_low_km, volume_high_km, focus, stability, race_id, race_in_week_id, generated_at";
+// "*" so optional columns added by later migrations (volume_override, V3b)
+// come through, and the query still works before they exist.
+const SEASON_COLUMNS = "*";
 
 /** The season row for a Monday, or null. */
 export async function getSeasonWeek(weekStart: string): Promise<SeasonWeekRow | null> {

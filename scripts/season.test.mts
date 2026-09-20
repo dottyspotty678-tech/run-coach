@@ -194,6 +194,32 @@ test("stability merge: pinned reused, firm clamped ±10%, fuzzy replaced, hold o
   assert.equal(withRace[1].block_position, "race");
 });
 
+test("a runner-set band on the planning week re-seeds the curve and survives the hold", () => {
+  const input = {
+    races: [race(1, 24, 42.2)],
+    today: TODAY,
+    currentFitnessKm: 29,
+    last7Km: 20,
+    runningCeilingKm: 22,
+    loadFlag: true,
+    holdWeek: week(1),
+    blockStartWeek: week(1),
+    weeks: 30,
+  };
+  const first = computeSeason(input);
+  // Without an override the planning week is held at last-7 ± 10%.
+  assert.equal(first[1].volume_high_km, 22);
+  const stored = first.map((r) => ({ ...r }));
+  stored[1] = { ...stored[1], volume_low_km: 25, volume_high_km: 28, volume_override: true };
+  const second = computeSeason({ ...input, stored });
+  // The band is kept verbatim (no hold applied) and the next progressive week climbs from it.
+  assert.equal(second[1].volume_low_km, 25);
+  assert.equal(second[1].volume_high_km, 28);
+  assert.equal(second[1].volume_override, true);
+  assert.ok(second[2].volume_high_km > 28, "week after the override climbs from 26.5, not from 20");
+  assert.ok(second[2].volume_high_km <= 26.5 * 1.09 * 1.1 + 0.05, "…but by no more than the rule allows");
+});
+
 test("two A races within 6 weeks are flagged", () => {
   const pairs = findCloseARaces([race(1, 10, 21.1), race(2, 14, 10), race(3, 30, 42.2)]);
   assert.equal(pairs.length, 1);

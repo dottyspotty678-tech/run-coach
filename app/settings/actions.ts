@@ -100,6 +100,32 @@ export async function deleteRace(formData: FormData) {
 }
 
 /**
+ * Sets a season week's running-volume band by hand (docs/SEASON-PLAN.md).
+ * Fields: `week_start_date` (Monday, YYYY-MM-DD), `volume_low_km`,
+ * `volume_high_km`. The band is kept verbatim through refreshes; when the
+ * week is the one being planned, the whole curve re-seeds from it. Pass
+ * `clear=1` to drop the override and let the planner derive the week again.
+ */
+export async function setWeekVolume(formData: FormData) {
+  const week = String(formData.get("week_start_date") ?? "");
+  if (!/^\d{4}-\d{2}-\d{2}$/.test(week)) return;
+  const supabase = createServiceClient();
+  if (String(formData.get("clear") ?? "") === "1") {
+    await supabase.from("season_plan").update({ volume_override: false }).eq("week_start_date", week);
+  } else {
+    const low = Number(formData.get("volume_low_km"));
+    const high = Number(formData.get("volume_high_km"));
+    if (!Number.isFinite(low) || !Number.isFinite(high) || low <= 0 || high < low) return;
+    await supabase
+      .from("season_plan")
+      .update({ volume_low_km: low, volume_high_km: high, volume_override: true })
+      .eq("week_start_date", week);
+  }
+  await refreshSeasonPlan();
+  revalidateRaces();
+}
+
+/**
  * Records how a race went. Fields: `id`, `result_time` (hh:mm:ss; empty
  * clears), `result_notes` (free text; empty clears).
  */

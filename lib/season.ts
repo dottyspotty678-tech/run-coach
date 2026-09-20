@@ -36,6 +36,12 @@ export type SeasonWeek = {
   race_id: number | null;
   /** A race that falls inside this week (highest priority wins), or null. */
   race_in_week_id: number | null;
+  /**
+   * True when the runner set this week's band by hand. The band is kept
+   * verbatim through every refresh (no hold, no clamp), and when it is the
+   * planning week the whole volume curve re-seeds from it.
+   */
+  volume_override?: boolean;
 };
 
 export type SeasonInput = {
@@ -312,10 +318,18 @@ function computeRaw(input: SeasonInput): SeasonWeek[] {
   // is higher — otherwise a hold week (say 20 km after a niggle) is followed
   // by a leap straight back to the average. The plan then ramps from where the
   // runner actually is.
-  const seed =
+  const derivedSeed =
     input.runningCeilingKm && input.runningCeilingKm > 0
       ? Math.min(fitness, input.runningCeilingKm)
       : fitness;
+  // A runner-set band on the planning week recalibrates everything: the curve
+  // seeds from its midpoint and the near-week 10% clamp stands aside (the
+  // runner has declared what they can do this week).
+  const overrideRow = storedPos.get(weekStarts[blockStartIndex]);
+  const seedOverridden = Boolean(overrideRow?.volume_override);
+  const seed = seedOverridden
+    ? (overrideRow!.volume_low_km + overrideRow!.volume_high_km) / 2
+    : derivedSeed;
 
   // Volume is planned right-to-left too. A "segment" runs from week 0 (or the
   // week after a recovery block) up to the taper of its A race. Within it the
@@ -407,8 +421,9 @@ function computeRaw(input: SeasonInput): SeasonWeek[] {
         break;
       }
     }
-    // Never above the weekly context's 10%-rule ceiling for the near weeks.
-    if (input.runningCeilingKm && i <= 1 && target > input.runningCeilingKm) {
+    // Never above the weekly context's 10%-rule ceiling for the near weeks —
+    // unless the runner has set the planning week's volume by hand.
+    if (!seedOverridden && input.runningCeilingKm && i <= 1 && target > input.runningCeilingKm) {
       target = input.runningCeilingKm;
     }
     prevTarget = target;
@@ -465,6 +480,11 @@ export function computeSeason(input: SeasonInput): SeasonWeek[] {
   const holdSignal = Boolean(input.loadFlag || input.tooHardCheckin);
   const holdBand =
     input.last7Km > 0 ? { low: round1(input.last7Km * 0.9), high: round1(input.last7Km * 1.1) } : null;
+  // A runner-set band on the planning week is a deliberate recalibration: the
+  // firm weeks adopt the re-seeded curve outright (structure kept) instead of
+  // creeping towards it 10% per refresh.
+  const startWeek = input.blockStartWeek ?? mondayOf(input.today);
+  const reseeded = Boolean(stored.get(startWeek)?.volume_override);
 
   return raw.map((n, i) => {
     const s = stored.get(n.week_start_date);
@@ -480,7 +500,7 @@ export function computeSeason(input: SeasonInput): SeasonWeek[] {
       row.race_id = n.race_id;
       row.race_in_week_id = n.race_in_week_id;
       const hold = raceChanged || (holdSignal && n.week_start_date === holdWeek);
-      if (hold && holdBand && !STRUCTURAL.has(row.phase)) {
+      if (hold && holdBand && !STRUCTURAL.has(row.phase) && !row.volume_override) {
         row.volume_low_km = holdBand.low;
         row.volume_high_km = holdBand.high;
         if (!row.focus.startsWith("hold")) row.focus = `hold — consolidate at last week's volume; ${row.focus}`;
@@ -498,8 +518,17 @@ export function computeSeason(input: SeasonInput): SeasonWeek[] {
         phase: structural ? n.phase : s.phase,
         block_position: structural ? n.block_position : s.block_position,
         focus: structural ? n.focus : s.focus,
-        volume_low_km: round1(clamp(n.volume_low_km, s.volume_low_km * 0.9, s.volume_low_km * 1.1)),
-        volume_high_km: round1(clamp(n.volume_high_km, s.volume_high_km * 0.9, s.volume_high_km * 1.1)),
+        volume_low_km: s.volume_override
+          ? s.volume_low_km
+          : reseeded
+            ? n.volume_low_km
+            : round1(clamp(n.volume_low_km, s.volume_low_km * 0.9, s.volume_low_km * 1.1)),
+        volume_high_km: s.volume_override
+          ? s.volume_high_km
+          : reseeded
+            ? n.volume_high_km
+            : round1(clamp(n.volume_high_km, s.volume_high_km * 0.9, s.volume_high_km * 1.1)),
+        volume_override: s.volume_override ?? false,
         stability: "firm",
         race_id: n.race_id,
         race_in_week_id: n.race_in_week_id,
