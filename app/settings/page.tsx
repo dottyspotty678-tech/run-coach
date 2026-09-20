@@ -3,8 +3,10 @@ import { createServiceClient } from "@/lib/supabase/service";
 import { PHASE_LABELS, blockLabel, weeksUntil } from "@/lib/season";
 import { isStravaConnected } from "@/lib/strava";
 import { isMicrosoftConnected } from "@/lib/microsoft";
-import { mondayOf, relativeTime, todayISO } from "@/components/dates";
-import { getNextRaces, getRaces, getSeasonWeek, getSyncStatus } from "@/components/data";
+import { boundaryWeekStart, mondayOf, relativeTime, todayISO } from "@/components/dates";
+import { getNextRaces, getRaces, getSeasonWeek, getSyncStatus, getWatchSync } from "@/components/data";
+import { isIntervalsConfigured } from "@/lib/intervals";
+import { WatchCard } from "@/components/watch-sync";
 import { IconChevronRight } from "@/components/icons";
 import { Races } from "./races";
 import { FoodForm } from "./food-form";
@@ -28,6 +30,7 @@ export default async function SettingsPage() {
     syncStatus,
     seasonRow,
     nextRaces,
+    watchRow,
   ] = await Promise.all([
     supabase.from("settings").select("*").eq("id", true).maybeSingle(),
     // v3: the races list replaces the legacy single race_goal form.
@@ -38,6 +41,8 @@ export default async function SettingsPage() {
     // v3: the phase card reads this week's season row + the next race.
     getSeasonWeek(mondayOf(today)),
     getNextRaces(today, 1),
+    // Watch sync (§8f): the current plan (boundary) week's push status.
+    getWatchSync(boundaryWeekStart(now)),
   ]);
   const nextRace = nextRaces[0] ?? null;
   const weeksToRace = nextRace ? weeksUntil(mondayOf(today), nextRace.race_date) : null;
@@ -133,6 +138,13 @@ export default async function SettingsPage() {
               ? { issue: syncStatus.microsoft.last_error }
               : {}),
           }}
+        />
+        <WatchCard
+          configured={isIntervalsConfigured()}
+          weekStart={boundaryWeekStart(now)}
+          pushedRelative={relativeTime(watchRow?.pushed_at, now)}
+          eventsPushed={watchRow?.events_pushed ?? 0}
+          {...(watchRow?.last_error ? { issue: watchRow.last_error } : {})}
         />
       </section>
 

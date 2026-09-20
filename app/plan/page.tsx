@@ -26,6 +26,7 @@ import {
   getRaces,
   getRecentActivities,
   getSeasonWeek,
+  getWatchSync,
   isRun,
   sessionDone,
   travelDatesFromEvents,
@@ -36,6 +37,9 @@ import {
 } from "@/components/data";
 import { SESSION_META } from "@/components/session";
 import { SeasonPosition } from "@/components/season-ui";
+import { isIntervalsConfigured } from "@/lib/intervals";
+import { WatchSyncLine } from "@/components/watch-sync";
+import { watchStatusFor } from "@/components/watch-status";
 import { IconChevronRight } from "@/components/icons";
 import { PlanWeekToggle } from "./week-toggle";
 import { ThisWeekReview, type ReviewRow } from "./this-week-review";
@@ -314,6 +318,8 @@ export default async function PlanPage({
     nextRaces,
     races,
     pending,
+    watchThis,
+    watchNext,
   ] = await Promise.all([
     getPlanForWeek(thisWeekStart),
     getPlanForWeek(nextWeekStart),
@@ -326,8 +332,12 @@ export default async function PlanPage({
     getNextRaces(today, 1),
     getRaces(),
     getPendingChanges(nextWeekStart),
+    getWatchSync(thisWeekStart),
+    getWatchSync(nextWeekStart),
   ]);
   const nextRace = nextRaces[0] ?? null;
+  // Watch sync (§8f): the whole status line hides when no intervals.icu key is set.
+  const watchOn = isIntervalsConfigured();
 
   const done = completedCategories(activities);
 
@@ -396,6 +406,9 @@ export default async function PlanPage({
               weekStart={thisWeekStart}
               generatedAt={relativeTime(thisPlan.generated_at, now)}
             />
+            {watchOn && (
+              <WatchSyncLine weekStart={thisWeekStart} status={watchStatusFor(watchThis, thisDays, now)} />
+            )}
             <WeekSummarySection
               plan={thisPlan}
               days={thisDays}
@@ -450,6 +463,9 @@ export default async function PlanPage({
               weekStart={nextWeekStart}
               generatedAt={relativeTime(nextPlan.generated_at, now)}
             />
+            {watchOn && (
+              <WatchSyncLine weekStart={nextWeekStart} status={watchStatusFor(watchNext, nextDays, now)} />
+            )}
             <WeekSummarySection
               plan={nextPlan}
               days={nextDays}
