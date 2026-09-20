@@ -82,9 +82,10 @@ export default async function DashboardPage() {
     // (the span runs to the day before check-out), so include last week's
     // events when deriving today's away status.
     getEventsForWeek(addDays(heroWeekStart, -7)),
-    // §3.12 done state: last Sunday's check-in planned THIS week; one run
-    // today targets NEXT week. Either counts as "done for the week".
-    getLatestAppliedCheckin([heroWeekStart, addDays(heroWeekStart, 7)]),
+    // §3.12 done state: only a check-in run DURING this week counts — such a
+    // run targets NEXT week. Last Sunday's check-in (which targets this week)
+    // must not show as done, so the tile resets to its default every Monday.
+    getLatestAppliedCheckin([addDays(heroWeekStart, 7)]),
   ]);
 
   const raceGoal = (raceGoalRes.data as RaceGoalRow | null) ?? null;
@@ -145,7 +146,11 @@ export default async function DashboardPage() {
   const hasThisWeeksFeedback = recentFeedback.some(
     (f) => f.week_start_date === heroWeekStart
   );
-  const showCheckinNudge = isSunday && !hasThisWeeksFeedback;
+  // Complete = a voice check-in applied this week OR a typed note for the week
+  // containing today. Both are keyed to the current week, so both reset on
+  // Monday without any extra state.
+  const checkinComplete = appliedCheckin !== null || hasThisWeeksFeedback;
+  const showCheckinNudge = isSunday && !checkinComplete;
 
   const hasAnyPlan = heroPlan !== null;
 
@@ -331,17 +336,23 @@ export default async function DashboardPage() {
           <Link href="/checkin" className="card flex min-h-[64px] items-center gap-2.5 px-3.5 py-3">
             <span
               className="shrink-0"
-              style={{ color: appliedCheckin ? "var(--ok)" : "var(--accent)" }}
+              style={{ color: checkinComplete ? "var(--ok)" : "var(--accent)" }}
             >
               <IconTick size={18} strokeWidth={2.2} />
             </span>
             <span className="flex min-w-0 flex-col">
               <span className="text-[14px] font-semibold leading-[18px]">
-                {appliedCheckin ? "Check-in done" : isSunday ? "Sunday check-in due" : "Add a check-in"}
+                {checkinComplete
+                  ? "Check-in complete"
+                  : isSunday
+                    ? "Sunday check-in due"
+                    : "Add a check-in"}
               </span>
-              {appliedCheckin && (
+              {checkinComplete && (
                 <span className="text-[11px] leading-[15px]" style={{ color: "var(--ink-3)" }}>
-                  {formatDayShort(londonDateOf(appliedCheckin.applied_at))} · tap to revise
+                  {appliedCheckin
+                    ? `${formatDayShort(londonDateOf(appliedCheckin.applied_at))} · tap to revise`
+                    : "This week · tap to revise"}
                 </span>
               )}
             </span>

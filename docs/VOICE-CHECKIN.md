@@ -64,9 +64,14 @@ same tables.
 
 ## Done state and revise mode
 
-An applied `voice_checkins` row for the target week is the done signal: the
-Dashboard's check-in tile shows "Check-in done" with the date (green tick),
-and the Check-in screen's button becomes "Revise check-in". A revise meeting
+A check-in completed DURING the current week is the done signal — an applied
+`voice_checkins` row targeting next week, or a typed feedback note for the
+week containing today. The Dashboard's check-in tile then shows "Check-in
+complete" (green tick, with the date for a voice meeting) and the Check-in
+screen's button becomes "Revise check-in". Because both signals are keyed to
+the current week, the tile resets to "Add a check-in" automatically on Monday
+— last Sunday's check-in targeting the new week is deliberately NOT treated as
+done for that week. A revise meeting
 skips the three parts — the coach reads back the recorded feedback and next
 week's plan, asks what to change, and submits the merged answers. Revise
 proposals leave the recorded feedback note untouched unless revisited, and
