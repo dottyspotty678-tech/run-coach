@@ -102,8 +102,9 @@ Name zones in plans by feel and pace, not heart-rate numbers.
 
 ## 5. Periodisation by phase
 
-The app derives the phase from the race distance and date. Map it to the
-traditional linear model every elite programme in the review used —
+Phase, block position and volume band arrive from the season plan — apply
+this section's rules to that position; do not re-derive it. Map the phase to
+the traditional linear model every elite programme in the review used —
 preparation, pre-competition, competition — with volume held through the
 first two and cut in the third, and the intensity mix drifting pyramidal →
 polarised:
@@ -129,8 +130,9 @@ polarised:
 ### Loading pattern: 3:1
 
 Inside base, build and peak, weeks run in blocks of four: **three progressive
-weeks, then one down week.** The training history in the prompt states where
-the runner is in the block ("Mesocycle: …") — follow it.
+weeks, then one down week.** The SEASON POSITION in the prompt states where
+the runner is in the block ("block position: week 2 of 3", "down week") —
+follow it.
 
 - **Progressive weeks** move volume up within the stated ceiling (never more
   than ~10% on the previous week), keep two quality sessions, and grow the

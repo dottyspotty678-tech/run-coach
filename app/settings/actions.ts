@@ -1,6 +1,8 @@
 "use server";
 
 import { createServiceClient } from "@/lib/supabase/service";
+import { refreshSeasonPlan } from "@/lib/seasonPlan";
+import { parseIntervalText } from "@/lib/season";
 import { boundaryWeekStart, mondayOf, todayISO } from "@/components/dates";
 import { revalidatePath } from "next/cache";
 
@@ -25,31 +27,157 @@ export async function saveSettings(formData: FormData) {
   revalidatePath("/settings");
 }
 
+// ---------------------------------------------------------------------------
+// Races (v3, docs/SEASON-PLAN.md §1–§2) — write side. Interface contract in
+// docs/DESIGN.md §8e. Every write re-runs the season planner so the Plan,
+// Dashboard and the next generation see the new structure immediately.
+// ---------------------------------------------------------------------------
+
+const RACE_PATHS = ["/settings", "/", "/plan", "/season"];
+
+function revalidateRaces() {
+  for (const p of RACE_PATHS) revalidatePath(p);
+}
+
+/** "hh:mm:ss" / "h:mm" / "N minutes" → Postgres interval text, or null. */
+function toIntervalText(raw: string): string | null {
+  return parseIntervalText(raw);
+}
+
+function raceFields(formData: FormData) {
+  const name = String(formData.get("name") ?? formData.get("race_name") ?? "").trim();
+  const distance = Number(formData.get("distance_km"));
+  const raceDate = String(formData.get("race_date") ?? "");
+  if (!name || !Number.isFinite(distance) || distance <= 0 || !/^\d{4}-\d{2}-\d{2}$/.test(raceDate)) {
+    return null;
+  }
+  const rawPriority = String(formData.get("priority") ?? "A").toUpperCase();
+  const priority = rawPriority === "B" || rawPriority === "C" ? rawPriority : "A";
+  // target_time as hh:mm:ss (preferred) — or the legacy target_time_minutes field.
+  const legacyMinutes = String(formData.get("target_time_minutes") ?? "").trim();
+  const target_time =
+    toIntervalText(String(formData.get("target_time") ?? "")) ??
+    (legacyMinutes ? toIntervalText(`${legacyMinutes} minutes`) : null);
+  return { name, distance_km: distance, race_date: raceDate, priority, target_time };
+}
+
+/**
+ * Adds a race. Fields: `name` (required), `distance_km` (required, > 0),
+ * `race_date` (YYYY-MM-DD, required), `priority` (A|B|C, default A),
+ * `target_time` (optional, hh:mm:ss).
+ */
+export async function addRace(formData: FormData) {
+  const fields = raceFields(formData);
+  if (!fields) return;
+  const supabase = createServiceClient();
+  await supabase.from("races").insert(fields);
+  await refreshSeasonPlan();
+  revalidateRaces();
+}
+
+/** Edits a race. Fields: `id` plus the addRace fields (all resupplied). */
+export async function updateRace(formData: FormData) {
+  const id = formId(formData);
+  const fields = raceFields(formData);
+  if (id === null || !fields) return;
+  const supabase = createServiceClient();
+  await supabase.from("races").update(fields).eq("id", id);
+  await refreshSeasonPlan();
+  revalidateRaces();
+}
+
+/** Deletes a race (confirm in the UI first). Field: `id`. */
+export async function deleteRace(formData: FormData) {
+  const id = formId(formData);
+  if (id === null) return;
+  const supabase = createServiceClient();
+  // Season rows referencing it lose the pointer; the refresh recomputes them.
+  await supabase.from("season_plan").update({ race_id: null }).eq("race_id", id);
+  await supabase.from("season_plan").update({ race_in_week_id: null }).eq("race_in_week_id", id);
+  await supabase.from("races").delete().eq("id", id);
+  await refreshSeasonPlan();
+  revalidateRaces();
+}
+
+/**
+ * Records how a race went. Fields: `id`, `result_time` (hh:mm:ss; empty
+ * clears), `result_notes` (free text; empty clears).
+ */
+export async function recordRaceResult(formData: FormData) {
+  const id = formId(formData);
+  if (id === null) return;
+  const supabase = createServiceClient();
+  await supabase
+    .from("races")
+    .update({
+      result_time: toIntervalText(String(formData.get("result_time") ?? "")),
+      result_notes: String(formData.get("result_notes") ?? "").trim() || null,
+    })
+    .eq("id", id);
+  await refreshSeasonPlan();
+  revalidateRaces();
+}
+
+/**
+ * @deprecated v3 — the single race goal is replaced by the `races` list
+ * (addRace/updateRace/deleteRace). Kept compiling for the legacy Settings form
+ * until the designer's Races UI lands; it mirrors the goal into `races` as the
+ * priority-A race so the season planner keeps working meanwhile.
+ */
 export async function saveRaceGoal(formData: FormData) {
   const supabase = createServiceClient();
 
   const targetTimeMinutes = formData.get("target_time_minutes");
+  const raceName = formData.get("race_name") as string;
+  const raceDate = formData.get("race_date") as string;
+  const distanceKm = Number(formData.get("distance_km"));
+
+  // Replace the previously mirrored race (matched by the old goal's name+date).
+  const { data: previous } = await supabase.from("race_goal").select("*").eq("id", true).maybeSingle();
+  if (previous) {
+    await supabase
+      .from("races")
+      .delete()
+      .eq("name", previous.race_name)
+      .eq("race_date", previous.race_date);
+  }
 
   await supabase.from("race_goal").upsert({
     id: true,
-    race_name: formData.get("race_name") as string,
-    distance_km: Number(formData.get("distance_km")),
-    race_date: formData.get("race_date") as string,
+    race_name: raceName,
+    distance_km: distanceKm,
+    race_date: raceDate,
     target_time: targetTimeMinutes ? `${targetTimeMinutes} minutes` : null,
   });
+  await supabase.from("races").insert({
+    name: raceName,
+    distance_km: distanceKm,
+    race_date: raceDate,
+    priority: "A",
+    target_time: targetTimeMinutes ? toIntervalText(`${targetTimeMinutes} minutes`) : null,
+  });
 
-  revalidatePath("/settings");
-  revalidatePath("/");
-  revalidatePath("/plan");
+  await refreshSeasonPlan();
+  revalidateRaces();
 }
 
-/** Removes the race goal — the app then plans for general fitness. */
+/**
+ * @deprecated v3 — use deleteRace. Removes the legacy goal and its mirrored
+ * `races` row; the app then plans for general fitness.
+ */
 export async function clearRaceGoal() {
   const supabase = createServiceClient();
+  const { data: previous } = await supabase.from("race_goal").select("*").eq("id", true).maybeSingle();
+  if (previous) {
+    await supabase
+      .from("races")
+      .delete()
+      .eq("name", previous.race_name)
+      .eq("race_date", previous.race_date);
+  }
   await supabase.from("race_goal").delete().eq("id", true);
-  revalidatePath("/settings");
-  revalidatePath("/");
-  revalidatePath("/plan");
+  await refreshSeasonPlan();
+  revalidateRaces();
 }
 
 /** Deletes the stored OAuth token for a provider (confirmed in the UI first). */

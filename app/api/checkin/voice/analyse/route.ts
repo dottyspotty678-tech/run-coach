@@ -22,6 +22,8 @@ export async function POST(request: Request) {
       schedule_notes: field(body, "schedule_notes"),
       // v3 agents send meal_nights; accept the old field from a stale agent.
       meal_nights: field(body, "meal_nights") || field(body, "no_cook_days"),
+      // Season v3: post-race Sundays carry the finish time + a sentence of notes.
+      race_result: field(body, "race_result"),
     };
     if (!answers.training_feedback && !answers.schedule_notes && !answers.meal_nights) {
       return NextResponse.json({ error: "No check-in answers provided." }, { status: 400 });

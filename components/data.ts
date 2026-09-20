@@ -3,6 +3,7 @@
 
 import { createServiceClient } from "@/lib/supabase/service";
 import type { SessionType, WeeklyPlanRow } from "@/lib/planTypes";
+import type { RacePriority, SeasonWeek } from "@/lib/season";
 import { addDays, londonDateOf } from "@/components/dates";
 
 export type ActivityRow = {
@@ -521,6 +522,96 @@ export async function getInjuryHistory(): Promise<InjuryHistoryRow[]> {
       .order("created_at", { ascending: false });
     if (error || !data) return [];
     return data as InjuryHistoryRow[];
+  } catch {
+    return [];
+  }
+}
+
+// ---------------------------------------------------------------------------
+// Races + season plan (v3, docs/SEASON-PLAN.md) — read side. Interface
+// contract in docs/DESIGN.md §8e. All degrade silently (null / []) until the
+// V3 season migration has run.
+// ---------------------------------------------------------------------------
+
+export type RaceRow = {
+  id: number;
+  name: string;
+  distance_km: number;
+  /** YYYY-MM-DD */
+  race_date: string;
+  priority: RacePriority;
+  /** Postgres interval text (e.g. "01:25:00") or null. */
+  target_time: string | null;
+  result_time: string | null;
+  result_notes: string | null;
+  created_at: string;
+};
+
+/** All races, soonest first. */
+export async function getRaces(): Promise<RaceRow[]> {
+  try {
+    const supabase = createServiceClient();
+    const { data, error } = await supabase
+      .from("races")
+      .select("id, name, distance_km, race_date, priority, target_time, result_time, result_notes, created_at")
+      .order("race_date", { ascending: true });
+    if (error || !data) return [];
+    return data as RaceRow[];
+  } catch {
+    return [];
+  }
+}
+
+/** Upcoming races on or after `fromDate` (YYYY-MM-DD), soonest first. */
+export async function getNextRaces(fromDate: string, limit = 3): Promise<RaceRow[]> {
+  try {
+    const supabase = createServiceClient();
+    const { data, error } = await supabase
+      .from("races")
+      .select("id, name, distance_km, race_date, priority, target_time, result_time, result_notes, created_at")
+      .gte("race_date", fromDate)
+      .order("race_date", { ascending: true })
+      .limit(limit);
+    if (error || !data) return [];
+    return data as RaceRow[];
+  } catch {
+    return [];
+  }
+}
+
+export type SeasonWeekRow = SeasonWeek & { generated_at: string };
+
+const SEASON_COLUMNS =
+  "week_start_date, phase, block_position, volume_low_km, volume_high_km, focus, stability, race_id, race_in_week_id, generated_at";
+
+/** The season row for a Monday, or null. */
+export async function getSeasonWeek(weekStart: string): Promise<SeasonWeekRow | null> {
+  try {
+    const supabase = createServiceClient();
+    const { data, error } = await supabase
+      .from("season_plan")
+      .select(SEASON_COLUMNS)
+      .eq("week_start_date", weekStart)
+      .maybeSingle();
+    if (error || !data) return null;
+    return data as unknown as SeasonWeekRow;
+  } catch {
+    return null;
+  }
+}
+
+/** `weeks` season rows from a Monday onwards, ascending. */
+export async function getSeasonPlan(fromWeek: string, weeks: number): Promise<SeasonWeekRow[]> {
+  try {
+    const supabase = createServiceClient();
+    const { data, error } = await supabase
+      .from("season_plan")
+      .select(SEASON_COLUMNS)
+      .gte("week_start_date", fromWeek)
+      .lt("week_start_date", addDays(fromWeek, weeks * 7))
+      .order("week_start_date", { ascending: true });
+    if (error || !data) return [];
+    return data as unknown as SeasonWeekRow[];
   } catch {
     return [];
   }

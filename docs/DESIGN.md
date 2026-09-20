@@ -435,6 +435,83 @@ Contract for the v2 screens (docs/REDESIGN-V2.md). Same style as §7–§8c.
   call (and this week's Monday on This week's regenerate action, since after
   Sunday 17:00 the boundary week and "this week" diverge).
 
+## 8e. Season plan (v3) — backend interface
+
+Contract for the v3 UI (docs/SEASON-PLAN.md §6): Settings → Races list, the
+read-only `/season` screen, and the Plan week-summary position line. Same
+style as §7–§8d. Everything degrades silently (null / []) until the V3 season
+migration has run.
+
+### Season row shape (`SeasonWeek` in `lib/season.ts`; rows carry `generated_at` too)
+
+```ts
+{
+  week_start_date: string;           // Monday, YYYY-MM-DD
+  phase: "base" | "build" | "peak" | "taper" | "race_week" | "recovery" | "general";
+  block_position: "1" | "2" | "3" | "down" | "taper" | "race" | "recovery";
+  volume_low_km: number;             // band, target ± 10%
+  volume_high_km: number;
+  focus: string;                     // one line, e.g. "threshold + hard session, long run growing"
+  stability: "pinned" | "firm" | "fuzzy";
+  race_id: number | null;            // the next A/B race this week points at
+  race_in_week_id: number | null;    // a race falling inside this week (A > B > C)
+}
+```
+
+Presentation helpers in `lib/season.ts`: `PHASE_LABELS[phase]` ("Build"),
+`blockLabel(row)` ("week 2 of 3" / "down week" / "taper" / "race week" /
+"recovery week"), `weeksUntil(weekStart, raceDate)`, `seasonLine(row, races,
+weekStart)` ("Peak, week 2 of 3 — Manchester Half (A) in 3 weeks; parkrun (C)
+this week"), `findCloseARaces(races)` → pairs of A races within 6 weeks (the
+Season screen banner: "too close for a full rebuild — the second race is
+treated as a second peak").
+
+### Data access (`components/data.ts`)
+
+- `getRaces(): Promise<RaceRow[]>` — all races, soonest first.
+  `RaceRow = { id, name, distance_km, race_date, priority: "A"|"B"|"C", target_time, result_time, result_notes, created_at }`
+  (times are Postgres interval text such as `"01:25:00"`, or null).
+- `getNextRaces(fromDate, limit = 3)` — races on/after a YYYY-MM-DD date.
+- `getSeasonWeek(weekStart)` — one row or null.
+- `getSeasonPlan(fromWeek, weeks)` — ascending rows for the Season screen
+  (35 weeks from the current Monday). Stability drives tone: pinned solid,
+  firm normal, fuzzy dimmed; the current week is `mondayOf(today)`.
+
+### Server actions (`app/settings/actions.ts`) — each re-runs the planner
+
+- `addRace(formData)` — fields `name`, `distance_km`, `race_date`
+  (YYYY-MM-DD), `priority` (A|B|C, default A), `target_time` (optional,
+  `hh:mm:ss`; also accepts the legacy `target_time_minutes`).
+- `updateRace(formData)` — `id` plus the same fields, all resupplied.
+- `deleteRace(formData)` — `id` (confirm in the UI first).
+- `recordRaceResult(formData)` — `id`, `result_time` (`hh:mm:ss`, empty
+  clears), `result_notes` (empty clears). Show the result fields for past
+  races only.
+- `saveRaceGoal` / `clearRaceGoal` are **deprecated** (they mirror the legacy
+  single goal into `races` as an A race) and go when the Races list lands.
+
+### Where the position shows
+
+- Plan week summary: `PHASE_LABELS[row.phase] · blockLabel(row) · N weeks to
+  <next race>` — `SeasonChips` in `app/plan/page.tsx` is the placeholder to
+  restyle.
+- Dashboard: "Race week" chip when `phase === "race_week"` or
+  `block_position === "race"`; countdown chip from `getNextRaces(today, 1)`.
+- Settings phase card: season row + next race (`app/settings/page.tsx`).
+- Dashboard quick action "Add a goal race" reads "Races" once a race exists
+  and should deep-link to the Races list.
+
+### Weekly generation and voice (for completeness)
+
+`lib/seasonPlan.ts` `refreshSeasonPlan()` runs at the start of every
+`buildContext` and from every races action; the prompt's SEASON POSITION
+block comes from the target week's row. The voice agent's `race_goal`
+dynamic variable is the season line; `race_review` names an A/B race just run
+in the reviewed week (or "none"); `submit_checkin` accepts an optional
+`race_result` string, the proposal carries `race_result: { time, notes } |
+null`, and apply writes `races.result_time` / `result_notes` then refreshes
+the plan.
+
 ## 9. States checklist (stress-tester map)
 
 Every tab screen implements: **loading** (route `loading.tsx` skeletons), **empty** (specified

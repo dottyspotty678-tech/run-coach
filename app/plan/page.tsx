@@ -1,6 +1,5 @@
 import Link from "next/link";
-import { createServiceClient } from "@/lib/supabase/service";
-import { getTrainingPhase } from "@/lib/trainingPhase";
+import { PHASE_LABELS, blockLabel, weeksUntil } from "@/lib/season";
 import {
   parseTrainingDays,
   SESSION_TYPES,
@@ -22,14 +21,18 @@ import {
 import {
   completedCategories,
   getEventsForWeek,
+  getNextRaces,
   getPendingChanges,
   getPlanForWeek,
   getRecentActivities,
+  getSeasonWeek,
   isRun,
   sessionDone,
   travelDatesFromEvents,
   type ActivityRow,
   type CalendarEventRow,
+  type RaceRow,
+  type SeasonWeekRow,
 } from "@/components/data";
 import { SESSION_META } from "@/components/session";
 import { IconChevronRight } from "@/components/icons";
@@ -299,14 +302,15 @@ export default async function PlanPage({
   const thisWeekDates = weekDates(thisWeekStart);
   const nextWeekDates = weekDates(nextWeekStart);
 
-  const supabase = createServiceClient();
   const [
     thisPlan,
     nextPlan,
     activities,
     eventsThis,
     eventsNext,
-    raceGoalRes,
+    thisSeason,
+    nextSeason,
+    nextRaces,
     pending,
   ] = await Promise.all([
     getPlanForWeek(thisWeekStart),
@@ -314,18 +318,13 @@ export default async function PlanPage({
     getRecentActivities(28),
     getEventsForWeek(thisWeekStart),
     getEventsForWeek(nextWeekStart),
-    supabase.from("race_goal").select("*").eq("id", true).maybeSingle(),
+    // v3: season rows + next race replace the single race goal / phase maths.
+    getSeasonWeek(thisWeekStart),
+    getSeasonWeek(nextWeekStart),
+    getNextRaces(today, 1),
     getPendingChanges(nextWeekStart),
   ]);
-
-  const raceGoal = raceGoalRes.data as {
-    race_name: string;
-    distance_km: number;
-    race_date: string;
-  } | null;
-  const phaseInfo = raceGoal
-    ? getTrainingPhase(new Date(raceGoal.race_date), raceGoal.distance_km, now)
-    : null;
+  const nextRace = nextRaces[0] ?? null;
 
   const done = completedCategories(activities);
 
@@ -389,21 +388,7 @@ export default async function PlanPage({
           <section className="card flex flex-col gap-2 p-4">
             <div className="flex items-start justify-between gap-2">
               <div className="flex flex-wrap gap-1.5">
-                {phaseInfo && (
-                  <span className="chip capitalize" style={{ color: "var(--accent)", background: "var(--accent-soft)" }}>
-                    {phaseInfo.phase.replace("_", " ")}
-                  </span>
-                )}
-                {phaseInfo && phaseInfo.weeksToRace > 0 && (
-                  <span className="chip" style={{ color: "var(--ink-2)", background: "var(--raised)" }}>
-                    {Math.round(phaseInfo.weeksToRace)} weeks to race
-                  </span>
-                )}
-                {!phaseInfo && (
-                  <span className="chip" style={{ color: "var(--ink-2)", background: "var(--raised)" }}>
-                    General fitness
-                  </span>
-                )}
+                <SeasonChips season={thisSeason} nextRace={nextRace} weekStart={thisWeekStart} />
               </div>
               <span className="shrink-0 pt-1 text-[11px]" style={{ color: "var(--ink-3)" }}>
                 Generated {relativeTime(thisPlan.generated_at, now)}
@@ -458,21 +443,7 @@ export default async function PlanPage({
           <section className="card flex flex-col gap-2 p-4">
             <div className="flex items-start justify-between gap-2">
               <div className="flex flex-wrap gap-1.5">
-                {phaseInfo && (
-                  <span className="chip capitalize" style={{ color: "var(--accent)", background: "var(--accent-soft)" }}>
-                    {phaseInfo.phase.replace("_", " ")}
-                  </span>
-                )}
-                {phaseInfo && phaseInfo.weeksToRace > 0 && (
-                  <span className="chip" style={{ color: "var(--ink-2)", background: "var(--raised)" }}>
-                    {Math.round(phaseInfo.weeksToRace)} weeks to race
-                  </span>
-                )}
-                {!phaseInfo && (
-                  <span className="chip" style={{ color: "var(--ink-2)", background: "var(--raised)" }}>
-                    General fitness
-                  </span>
-                )}
+                <SeasonChips season={nextSeason} nextRace={nextRace} weekStart={nextWeekStart} />
               </div>
               <span className="shrink-0 pt-1 text-[11px]" style={{ color: "var(--ink-3)" }}>
                 Generated {relativeTime(nextPlan.generated_at, now)}
@@ -539,5 +510,43 @@ export default async function PlanPage({
         }
       />
     </main>
+  );
+}
+
+/**
+ * v3 position chips for a week-summary card: "Build · week 2 of 3" plus the
+ * countdown to the next race, from the season row (docs/SEASON-PLAN.md §6).
+ * Minimal placeholder markup — the designer restyles the position line.
+ */
+function SeasonChips({
+  season,
+  nextRace,
+  weekStart,
+}: {
+  season: SeasonWeekRow | null;
+  nextRace: RaceRow | null;
+  weekStart: string;
+}) {
+  if (!season) {
+    return (
+      <span className="chip" style={{ color: "var(--ink-2)", background: "var(--raised)" }}>
+        General fitness
+      </span>
+    );
+  }
+  const weeks = nextRace ? weeksUntil(weekStart, nextRace.race_date) : null;
+  return (
+    <>
+      <span className="chip" style={{ color: "var(--accent)", background: "var(--accent-soft)" }}>
+        {PHASE_LABELS[season.phase]} · {blockLabel(season)}
+      </span>
+      {nextRace && weeks !== null && weeks >= 0 && (
+        <span className="chip" style={{ color: "var(--ink-2)", background: "var(--raised)" }}>
+          {weeks === 0
+            ? `${nextRace.name} this week`
+            : `${weeks} week${weeks === 1 ? "" : "s"} to ${nextRace.name}`}
+        </span>
+      )}
+    </>
   );
 }

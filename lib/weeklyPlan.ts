@@ -1,7 +1,8 @@
 import Anthropic from "@anthropic-ai/sdk";
 import { coachBrief } from "@/lib/coachBrief";
 import { createServiceClient } from "@/lib/supabase/service";
-import { getTrainingPhase } from "@/lib/trainingPhase";
+import { refreshSeasonPlan } from "@/lib/seasonPlan";
+import { PHASE_LABELS, blockLabel, weeksUntil } from "@/lib/season";
 import {
   isAwayMealEntry,
   isShoppingItem,
@@ -59,7 +60,8 @@ type PlanContext = {
   sections: {
     trainingSummary: string;
     calendarSummary: string;
-    raceSummary: string;
+    /** v3: the SEASON POSITION block from the target week's season row. */
+    seasonSummary: string;
     settingsSummary: string;
     runnerContext: string;
   };
@@ -75,11 +77,14 @@ async function buildContext(targetWeekStart?: string): Promise<PlanContext> {
   const weekDatesList = weekDates(weekStart);
   const weekEnd = addDays(weekStart, 7);
 
+  // v3 (docs/SEASON-PLAN.md §5): the season planner runs first, so the
+  // position this generation works from is current (races, fitness, holds).
+  const season = await refreshSeasonPlan(now);
+
   const [
     activities,
     { data: events },
     { data: settings },
-    { data: raceGoal },
     runnerContext,
     recentFeedback,
     injuryHistory,
@@ -95,7 +100,6 @@ async function buildContext(targetWeekStart?: string): Promise<PlanContext> {
       .gte("end_time", `${weekStart}T00:00:00Z`)
       .order("start_time", { ascending: true }),
     supabase.from("settings").select("*").eq("id", true).maybeSingle(),
-    supabase.from("race_goal").select("*").eq("id", true).maybeSingle(),
     getRunnerContext(),
     getRecentFeedback(3, weekStart),
     getInjuryHistory(),
@@ -148,30 +152,8 @@ async function buildContext(targetWeekStart?: string): Promise<PlanContext> {
         : `No load flag. Running ceiling for the week: ${runningCeilingKm!.toFixed(0)} km (last 7 days + 10%).`,
   ];
 
-  // 3:1 loading (COACH.md §5): count consecutive progressive weeks so the
-  // planner knows whether this is a progressive week or the down week. When
-  // planning the week ahead (Sunday evening / check-in), the current week
-  // counts as completed; mid-week revisions look only at fully completed
-  // weeks. A week under 80% of the one before is itself a down week and
-  // resets the count, as does a week with no running.
-  const planningNextWeek = weekStart > thisMonday;
-  const completedWeeks = planningNextWeek
-    ? [weeklyKm[2], weeklyKm[1], weeklyKm[0]]
-    : [weeklyKm[3], weeklyKm[2], weeklyKm[1]]; // oldest -> newest
-  let progressiveStreak = 0;
-  completedWeeks.forEach((km, i) => {
-    const prev = i > 0 ? completedWeeks[i - 1] : null;
-    if (km <= 0 || (prev !== null && prev > 0 && km < prev * 0.8)) {
-      progressiveStreak = 0;
-      return;
-    }
-    progressiveStreak += 1;
-  });
-  loadLines.push(
-    progressiveStreak >= 3
-      ? `Mesocycle: ${progressiveStreak} progressive weeks completed (3:1 loading) — this week is the DOWN week: running volume at 70-80% of last week, at most one quality session, long run shortened, and say so in the week summary.`
-      : `Mesocycle: week ${progressiveStreak + 1} of a 3:1 loading block (${progressiveStreak} progressive week${progressiveStreak === 1 ? "" : "s"} completed) — a progressive week, within the ceiling above.`
-  );
+  // (v3: the streak-based "Mesocycle:" line is gone — block position now
+  // arrives structurally from the season plan, see SEASON POSITION below.)
 
   // Supporting sessions summary, e.g. "2 x WeightTraining; 1 x Ride (40 km)".
   const nonRunByType = new Map<string, { count: number; km: number }>();
@@ -224,19 +206,43 @@ async function buildContext(targetWeekStart?: string): Promise<PlanContext> {
           .join("\n")
       : "No calendar events for the week — assume evenings after 18:00 and weekends are free unless told otherwise.";
 
-  let raceSummary =
-    "No target race set — plan for general fitness and say so in the week summary.";
-  if (raceGoal) {
-    const { phase, weeksToRace } = getTrainingPhase(
-      new Date(raceGoal.race_date),
-      raceGoal.distance_km,
-      now
-    );
-    raceSummary = `Target race: ${raceGoal.race_name}, ${raceGoal.distance_km}km on ${formatDateShort(
-      raceGoal.race_date
-    )} (${raceGoal.race_date.slice(0, 4)})${
-      raceGoal.target_time ? `, target time ${raceGoal.target_time}` : ""
-    }. Currently ${weeksToRace.toFixed(1)} weeks out, training phase: ${phase}.`;
+  // SEASON POSITION (v3): phase, block position, band, focus and races come
+  // from the planner's row for this week — the model applies COACH.md §5 to
+  // that position and never re-derives it.
+  const seasonRow = season.weeks.find((w) => w.week_start_date === weekStart) ?? null;
+  let seasonSummary: string;
+  if (!seasonRow) {
+    seasonSummary =
+      "No season plan is available for this week (no races and no plan rows) — plan for general fitness in a 3:1 pattern, keep running volume within the ceiling above, and say so in the week summary.";
+  } else {
+    const pointing = season.races.find((r) => r.id === seasonRow.race_id) ?? null;
+    const inWeek = season.races.find((r) => r.id === seasonRow.race_in_week_id) ?? null;
+    const raceLine = (r: (typeof season.races)[number], weeksAway: number) =>
+      `${r.name} (${r.priority}), ${r.distance_km} km on ${formatDayShort(r.race_date)} — ${
+        weeksAway <= 0 ? "this week" : `${weeksAway} week${weeksAway === 1 ? "" : "s"} away`
+      }${r.target_time ? `, target ${r.target_time}` : ""}`;
+    seasonSummary = [
+      `Phase: ${PHASE_LABELS[seasonRow.phase].toLowerCase()} — block position: ${blockLabel(seasonRow)}${
+        seasonRow.block_position === "1" || seasonRow.block_position === "2" || seasonRow.block_position === "3"
+          ? " (progressive)"
+          : ""
+      }.`,
+      `Running volume band for the week: ${seasonRow.volume_low_km.toFixed(0)}–${seasonRow.volume_high_km.toFixed(0)} km (prescribe inside it; the LOAD FLAG above still overrides downward).`,
+      `Focus: ${seasonRow.focus}.`,
+      pointing
+        ? `Next race: ${raceLine(pointing, weeksUntil(weekStart, pointing.race_date))}.`
+        : "Next race: none scheduled — general fitness.",
+      inWeek
+        ? `Race inside this week: ${inWeek.name} (${inWeek.priority}), ${inWeek.distance_km} km on ${formatDayShort(inWeek.race_date)}.`
+        : "No race falls inside this week.",
+      `Stability: ${seasonRow.stability} (${
+        seasonRow.stability === "pinned"
+          ? "this week's structure is fixed"
+          : seasonRow.stability === "firm"
+            ? "structure fixed, band may drift ±10%"
+            : "provisional — far weeks recompute"
+      }).`,
+    ].join("\n");
   }
 
   const settingsSummary = settings
@@ -283,7 +289,7 @@ ${feedbackLines}`;
     sections: {
       trainingSummary,
       calendarSummary,
-      raceSummary,
+      seasonSummary,
       settingsSummary,
       runnerContext: runnerContextSection,
     },
@@ -562,8 +568,8 @@ ${awayLine}${checkinBlock}${revisionBlock}
 TRAINING HISTORY (last 28 days):
 ${context.sections.trainingSummary}
 
-RACE GOAL:
-${context.sections.raceSummary}
+SEASON POSITION (from the season plan — apply the coaching brief's §5 rules to THIS position; do not re-derive phase, block position or volume):
+${context.sections.seasonSummary}
 
 CALENDAR THIS WEEK:
 ${context.sections.calendarSummary}
@@ -577,7 +583,11 @@ ${context.sections.runnerContext}
 ${coachBrief(EVIDENCE_PRINCIPLES)}
 
 TRAINING RULES:
-- Phase-appropriate sessions: protect the long run in base/build, sharpen in peak, visibly cut load in taper and race week, prescribe recovery post-race. If no race is set, plan for general fitness and say so in week_summary.
+- The SEASON POSITION above is authoritative: prescribe total running volume INSIDE the stated band (the band already respects the 10% rule; a LOAD FLAG still pushes it down, never up), and shape the week for the stated phase — protect the long run in base/build, sharpen in peak, visibly cut load in taper and race week, easy only in recovery. When the position says general fitness, say so in week_summary.
+- Block position drives the week's shape: progressive weeks (1, 2, 3) carry the phase's normal quality sessions; "down" and "recovery" weeks get AT MOST ONE quality session (threshold-biased, shorter than usual), a long run 20–30% shorter, and are labelled plainly as consolidation/recovery in week_summary; taper and race week follow the brief's §5 exactly.
+- A B-priority race inside the week gets a 3–4 day mini-taper: easy running only on the three days before it, no other quality session that week, the race itself is the week's hard effort (session_type "race").
+- A C-priority race inside the week replaces that day's quality session (session_type "race") and eases the day before; the week otherwise keeps its phase and band.
+- An A race inside the week means race week: two or three short easy runs, one brief race-pace touch early, rest the day before, strength stops mid-week.
 - Ramp sensibly after any gap in the history above — never assume continuity that is not there. Only running counts as running volume; rides and gym work are supporting training.
 - Respect the runner's context above: work around any injuries or niggles (reduce impact or intensity, avoid aggravating session types) and respond to how recent weeks felt — if last week felt too hard, ease this week's load; if it felt easy, progress gently.
 - Include exactly two strength sessions this week (session_type "strength"): one on a weekday and one on a weekend day, defaulting to Tuesday and Saturday unless the calendar makes those impossible — then the nearest sensible weekday/weekend day.

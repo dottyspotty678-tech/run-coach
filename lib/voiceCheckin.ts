@@ -3,16 +3,19 @@ import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { createServiceClient } from "@/lib/supabase/service";
 import { generateWeeklyPlan } from "@/lib/weeklyPlan";
-import { getTrainingPhase } from "@/lib/trainingPhase";
+import { refreshSeasonPlan } from "@/lib/seasonPlan";
+import { parseIntervalText, seasonLine } from "@/lib/season";
 import { isTrainingDay, parseAwayMeals } from "@/lib/planTypes";
 import {
   awayDatesForRange,
   getEventsForWeek,
   getLatestAppliedCheckin,
   getPlanForWeek,
+  getRaces,
   getRecentActivities,
   getRecentFeedback,
   getRunnerContext,
+  getSeasonWeek,
   isRun,
 } from "@/components/data";
 import {
@@ -66,8 +69,7 @@ export async function buildVoiceBriefing(
   const planWeek = session === "coach" ? boundaryWeekStart(now) : addDays(describedWeek, 7);
   const planDates = weekDates(planWeek);
 
-  const supabaseRead = createServiceClient();
-  const [activities, context, plan, events, appliedCheckin, recentFeedback, raceGoalRes] =
+  const [activities, context, plan, events, appliedCheckin, recentFeedback, seasonRow, races] =
     await Promise.all([
       getRecentActivities(7),
       getRunnerContext(),
@@ -75,25 +77,31 @@ export async function buildVoiceBriefing(
       getEventsForWeek(planWeek),
       getLatestAppliedCheckin([planWeek]),
       getRecentFeedback(3),
-      supabaseRead.from("race_goal").select("*").eq("id", true).maybeSingle(),
+      getSeasonWeek(planWeek),
+      getRaces(),
     ]);
-  const raceGoal = raceGoalRes.data as {
-    race_name: string;
-    distance_km: number;
-    race_date: string;
-    target_time: string | null;
-  } | null;
-  let raceLine = "no target race set — training for general fitness";
-  if (raceGoal) {
-    const { phase, weeksToRace } = getTrainingPhase(
-      new Date(raceGoal.race_date),
-      raceGoal.distance_km,
-      now
-    );
-    raceLine = `${raceGoal.race_name}, ${raceGoal.distance_km} km on ${formatDateShort(raceGoal.race_date)}${
-      raceGoal.target_time ? `, target ${raceGoal.target_time}` : ""
-    } — ${weeksToRace.toFixed(1)} weeks out, ${phase.replace("_", " ")} phase`;
-  }
+  // v3: the season line replaces the single race goal — e.g. "Peak, week 2 of
+  // 3 — Manchester Half (A) in 3 weeks; parkrun (C) this week".
+  const pointing = races.find((r) => r.id === seasonRow?.race_id);
+  const raceLine =
+    seasonLine(seasonRow, races, planWeek) +
+    (pointing?.target_time ? ` (target ${pointing.target_time})` : "");
+  // Post-race Sunday: an A/B race inside the week being reviewed that has
+  // already happened and has no result yet.
+  const describedEnd = addDays(describedWeek, 6);
+  const justRun = races.find(
+    (r) =>
+      r.priority !== "C" &&
+      r.race_date >= describedWeek &&
+      r.race_date <= describedEnd &&
+      r.race_date <= today &&
+      !r.result_time
+  );
+  const raceReview = justRun
+    ? `${justRun.name} (${justRun.priority}), ${justRun.distance_km} km, on ${formatDayShort(justRun.race_date)}${
+        justRun.target_time ? ` (target was ${justRun.target_time})` : ""
+      } — ask how it went, capture the finish time and one sentence of notes, and confirm the coming recovery week.`
+    : "none";
   const mode: "full" | "revise" | "coach" =
     session === "coach" ? "coach" : appliedCheckin ? "revise" : "full";
   const recordedFeedback =
@@ -168,6 +176,7 @@ export async function buildVoiceBriefing(
     dynamicVariables: {
       today: formatDateShort(today),
       race_goal: raceLine,
+      race_review: raceReview,
       greeting:
         mode === "coach"
           ? "Hi — what can I do for you? Your week, how you're feeling, or anything about training."
@@ -194,6 +203,8 @@ export type CheckinAnswers = {
   schedule_notes: string;
   /** Which nights need a prepped dinner / which need no cooking (free text). */
   meal_nights: string;
+  /** v3 post-race Sunday: finish time + a sentence of notes, in the runner's words. */
+  race_result?: string;
 };
 
 const ProposalSchema = z.object({
@@ -260,6 +271,18 @@ const ProposalSchema = z.object({
     .describe(
       "Concrete commitments from the schedule answers that are NOT already in the calendar context. Only real, dated commitments — never inferred ones. Empty when the calendar already covers everything mentioned."
     ),
+  race_result: z
+    .object({
+      time: z
+        .string()
+        .nullable()
+        .describe("Finish time as h:mm:ss (or mm:ss for short races), or null if not given."),
+      notes: z.string().nullable().describe("One sentence on how the race went, in the runner's spirit, or null."),
+    })
+    .nullable()
+    .describe(
+      "Post-race Sunday only: the result of the race listed as just run. Null when no race was run this week or the runner gave nothing about it."
+    ),
 });
 
 export type CheckinProposal = z.infer<typeof ProposalSchema>;
@@ -277,6 +300,8 @@ WHAT THE APP ALREADY KNOWS:
 Last week's recorded training:
 ${briefing.dynamicVariables.week_review}
 Current injuries on file: ${briefing.dynamicVariables.current_injuries}
+Season position for the plan week (phase, block position, next race): ${briefing.dynamicVariables.race_goal}
+Race just run this week: ${briefing.dynamicVariables.race_review}
 Next week's plan as stored:
 ${briefing.dynamicVariables.planned_week}
 Next week's calendar:
@@ -287,9 +312,12 @@ How training went and how they feel: "${answers.training_feedback}"
 Niggles / injuries: "${answers.injury_update}"
 Schedule for next week beyond the calendar: "${answers.schedule_notes}"
 Meal nights (which dinners to plan / which not): "${answers.meal_nights}"
+Race result (post-race Sunday only): "${answers.race_result?.trim() || "none"}"
 
 RULES:
 - Propose the MINIMUM set of changes the answers actually require — availability clashes move sessions, fatigue or niggles soften them, freed-up days may restore quality. Do not redesign a week that already fits.
+- TAPER AND RACE WEEK: when the season position says taper or race week, plan_changes may only REDUCE or MOVE load — never add volume, intensity or sessions, whatever the runner asks. Race-day travel and start times from the answers become calendar_additions.
+- race_result: when a race just run is listed and the runner gave a time and/or notes, fill race_result (time normalised to h:mm:ss); otherwise null. Never invent a result.
 - Declared activities are plan changes, never mere context: when the runner says they WILL do something (climbing, a long cycle, football, a gym session), emit a plan_change for that date telling the plan to schedule it as that day's session — sport counts as cross-training, gym as strength, and a sport plus a gym session on the same day fold into one entry — and to rebalance the week's running around it. The runner saying it happens means it happens; the plan must show it.
 - Injuries: work around anything current (that judgement happens at regeneration — your job is an accurate injuries_current text and, where clearly needed, a protective plan_change).
 - meal_dates: when the runner names the nights they want dinners planned ("Tuesday and Wednesday only"), set meal_dates to exactly those dates — that fully defines the week's meal plan. Leave empty when they didn't specify.
@@ -465,8 +493,33 @@ export async function applyCheckin(proposalId: string): Promise<{ spoken_result:
   const rawProposal = row.proposal_json as Record<string, unknown>;
   if (!Array.isArray(rawProposal.calendar_additions)) rawProposal.calendar_additions = [];
   if (!Array.isArray(rawProposal.meal_dates)) rawProposal.meal_dates = [];
+  if (rawProposal.race_result === undefined) rawProposal.race_result = null;
   const proposal = ProposalSchema.parse(rawProposal);
   const done: string[] = [];
+
+  // 0. Race result (v3 post-race Sunday): written to the A/B race that fell in
+  // the week being reviewed, then the season planner re-runs so the recovery
+  // block and the next race's stack are current.
+  const result = proposal.race_result;
+  if (result && (result.time || result.notes)) {
+    const described = String(row.described_week);
+    const races = await getRaces();
+    const raced =
+      races.find(
+        (r) => r.priority !== "C" && r.race_date >= described && r.race_date <= addDays(described, 6)
+      ) ?? races.find((r) => r.race_date >= described && r.race_date <= addDays(described, 6));
+    if (raced) {
+      await supabase
+        .from("races")
+        .update({
+          result_time: parseIntervalText(result.time) ?? raced.result_time,
+          result_notes: result.notes?.trim() || raced.result_notes,
+        })
+        .eq("id", raced.id);
+      await refreshSeasonPlan();
+      done.push(`recorded your ${raced.name} result`);
+    }
+  }
 
   // 1. Feedback note for the week just trained (same path as the check-in form).
   if (proposal.week_feedback_note.trim()) {

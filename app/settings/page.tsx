@@ -1,10 +1,10 @@
 import Link from "next/link";
 import { createServiceClient } from "@/lib/supabase/service";
-import { getTrainingPhase } from "@/lib/trainingPhase";
+import { PHASE_LABELS, blockLabel, weeksUntil } from "@/lib/season";
 import { isStravaConnected } from "@/lib/strava";
 import { isMicrosoftConnected } from "@/lib/microsoft";
-import { relativeTime, todayISO } from "@/components/dates";
-import { getSyncStatus } from "@/components/data";
+import { mondayOf, relativeTime, todayISO } from "@/components/dates";
+import { getNextRaces, getSeasonWeek, getSyncStatus } from "@/components/data";
 import { IconChevronRight } from "@/components/icons";
 import { RaceForm } from "./race-form";
 import { FoodForm } from "./food-form";
@@ -15,17 +15,9 @@ import pkg from "@/package.json";
 // build time and serves stale form prefills.
 export const dynamic = "force-dynamic";
 
-const PHASE_LABEL: Record<string, string> = {
-  base: "Base",
-  build: "Build",
-  peak: "Peak",
-  taper: "Taper",
-  race_week: "Race week",
-  post_race: "Post-race",
-};
-
 export default async function SettingsPage() {
   const now = new Date();
+  const today = todayISO(now);
   const supabase = createServiceClient();
 
   const [
@@ -34,17 +26,22 @@ export default async function SettingsPage() {
     stravaConnected,
     microsoftConnected,
     syncStatus,
+    seasonRow,
+    nextRaces,
   ] = await Promise.all([
     supabase.from("settings").select("*").eq("id", true).maybeSingle(),
+    // Legacy single goal — still feeds the deprecated RaceForm until the
+    // designer's Races list replaces it (docs/SEASON-PLAN.md §6).
     supabase.from("race_goal").select("*").eq("id", true).maybeSingle(),
     isStravaConnected(),
     isMicrosoftConnected(),
     getSyncStatus(),
+    // v3: the phase card reads this week's season row + the next race.
+    getSeasonWeek(mondayOf(today)),
+    getNextRaces(today, 1),
   ]);
-
-  const phaseInfo = raceGoal
-    ? getTrainingPhase(new Date(raceGoal.race_date), raceGoal.distance_km, now)
-    : null;
+  const nextRace = nextRaces[0] ?? null;
+  const weeksToRace = nextRace ? weeksUntil(mondayOf(today), nextRace.race_date) : null;
 
   return (
     <main className="flex flex-col gap-6 px-4 pt-3">
@@ -72,20 +69,22 @@ export default async function SettingsPage() {
             todayIso={todayISO(now)}
           />
         </div>
-        {phaseInfo && (
+        {seasonRow && (
           <div
             className="card flex items-baseline gap-2 p-4"
             style={{ background: "var(--accent-soft)", borderColor: "transparent" }}
           >
             <span className="display text-[20px]" style={{ color: "var(--accent)" }}>
-              {PHASE_LABEL[phaseInfo.phase] ?? phaseInfo.phase}
+              {PHASE_LABELS[seasonRow.phase]}
             </span>
             <span className="text-[13px]" style={{ color: "var(--ink-2)" }}>
-              {phaseInfo.phase === "post_race"
-                ? "Race day has passed — recovery first, then set the next goal."
-                : phaseInfo.weeksToRace >= 1
-                  ? `${Math.round(phaseInfo.weeksToRace)} weeks to race day`
-                  : "Race day is this week"}
+              {seasonRow.phase === "recovery"
+                ? "Race done — recovery first, then the next block."
+                : nextRace && weeksToRace !== null
+                  ? weeksToRace >= 1
+                    ? `${blockLabel(seasonRow)} · ${weeksToRace} weeks to ${nextRace.name}`
+                    : `${nextRace.name} is this week`
+                  : `${blockLabel(seasonRow)} · no race scheduled`}
             </span>
           </div>
         )}

@@ -1,11 +1,10 @@
 import Link from "next/link";
-import { getTrainingPhase } from "@/lib/trainingPhase";
-import { createServiceClient } from "@/lib/supabase/service";
 import { isStravaConnected } from "@/lib/strava";
 import { isMicrosoftConnected } from "@/lib/microsoft";
 import { parseTrainingDays, parseAwayMeals } from "@/lib/planTypes";
 import {
   addDays,
+  daysBetween,
   formatDayShort,
   londonDateOf,
   londonParts,
@@ -19,9 +18,11 @@ import {
   completedCategories,
   getEventsForWeek,
   getLatestAppliedCheckin,
+  getNextRaces,
   getPlanForWeek,
   getRecentActivities,
   getRecentFeedback,
+  getSeasonWeek,
   getSyncStatus,
   lastSuccessfulSync,
   runKm,
@@ -43,13 +44,6 @@ import {
 // Reads the DB on every request — never serve a stale prerender.
 export const dynamic = "force-dynamic";
 
-type RaceGoalRow = {
-  race_name: string;
-  distance_km: number;
-  race_date: string;
-  target_time: string | null;
-};
-
 // V2 Dashboard (docs/REDESIGN-V2.md §Screen 1): hero, away-day dinner card,
 // 7-day volume lookback (opens Activity history), 2x2 quick actions.
 export default async function DashboardPage() {
@@ -57,7 +51,6 @@ export default async function DashboardPage() {
   const today = todayISO(now);
   const heroWeekStart = mondayOf(today); // week that contains today
 
-  const supabase = createServiceClient();
   const [
     heroPlan,
     activities,
@@ -65,7 +58,8 @@ export default async function DashboardPage() {
     microsoftConnected,
     syncStatus,
     events,
-    raceGoalRes,
+    seasonRow,
+    nextRaces,
     recentFeedback,
     prevWeekEvents,
     appliedCheckin,
@@ -76,7 +70,9 @@ export default async function DashboardPage() {
     isMicrosoftConnected(),
     getSyncStatus(),
     getEventsForWeek(heroWeekStart),
-    supabase.from("race_goal").select("*").eq("id", true).maybeSingle(),
+    // v3: season position + next race replace the single race goal.
+    getSeasonWeek(heroWeekStart),
+    getNextRaces(today, 1),
     getRecentFeedback(1),
     // Away spans can be opened by a hotel check-in event in the PREVIOUS week
     // (the span runs to the day before check-out), so include last week's
@@ -88,7 +84,7 @@ export default async function DashboardPage() {
     getLatestAppliedCheckin([addDays(heroWeekStart, 7)]),
   ]);
 
-  const raceGoal = (raceGoalRes.data as RaceGoalRow | null) ?? null;
+  const nextRace = nextRaces[0] ?? null;
 
   // --- Hero: today's session ---
   const heroDays = parseTrainingDays(heroPlan);
@@ -113,14 +109,15 @@ export default async function DashboardPage() {
     ? todaySession.is_travel_day
     : eventTravelDates.has(today);
 
-  const phaseInfo = raceGoal
-    ? getTrainingPhase(new Date(raceGoal.race_date), raceGoal.distance_km, now)
-    : null;
+  // Season row (v3): race week when the planner says so (A race week, or a B
+  // race inside a progressive week); the countdown chip tracks the next race.
+  const isRaceWeek = seasonRow?.phase === "race_week" || seasonRow?.block_position === "race";
+  const daysToRace = nextRace ? daysBetween(today, nextRace.race_date) : null;
   const raceChip =
-    raceGoal && phaseInfo && phaseInfo.weeksToRace > 0 && phaseInfo.weeksToRace <= 12
-      ? phaseInfo.weeksToRace * 7 <= 14
-        ? `${Math.max(1, Math.round(phaseInfo.weeksToRace * 7))} days to ${raceGoal.race_name}`
-        : `${Math.round(phaseInfo.weeksToRace)} weeks to ${raceGoal.race_name}`
+    nextRace && daysToRace !== null && daysToRace > 0 && daysToRace <= 84
+      ? daysToRace <= 14
+        ? `${daysToRace} days to ${nextRace.name}`
+        : `${Math.round(daysToRace / 7)} weeks to ${nextRace.name}`
       : null;
 
   // --- Volume lookback (running only — U1) + sessions-done summary ---
@@ -170,7 +167,7 @@ export default async function DashboardPage() {
                 Travel day
               </span>
             )}
-            {phaseInfo?.phase === "race_week" && (
+            {isRaceWeek && (
               <span className="chip" style={{ color: "var(--accent)", background: "var(--accent-soft)" }}>
                 Race week
               </span>
@@ -330,7 +327,7 @@ export default async function DashboardPage() {
               <IconFlag size={18} strokeWidth={2} />
             </span>
             <span className="text-[14px] font-semibold leading-[18px]">
-              {raceGoal ? "Update goal race" : "Add a goal race"}
+              {nextRace ? "Races" : "Add a goal race"}
             </span>
           </Link>
           <Link href="/checkin" className="card flex min-h-[64px] items-center gap-2.5 px-3.5 py-3">

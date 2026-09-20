@@ -467,6 +467,36 @@ says what to change, and gets a revision — then treats the plan as final.
   actually sum to (recount before writing).
 - Backend contracts for all of the above: DESIGN.md §8d.
 
+### 3.15 Season plan — multi-race, right-to-left periodisation (Must — added in v3; contract in docs/SEASON-PLAN.md)
+
+- **Races, not a race goal**: a list of races with A/B/C priority, distance, date, optional
+  target time and, after the race, a result time and notes. Replaces `race_goal` (table left in
+  place, unused). Two A races within 6 weeks are both kept and flagged on the Season screen.
+- **Deterministic planner** (`lib/season.ts`, pure and unit-tested): for every A race in the
+  next 35 weeks, works backwards — race week; taper (marathon+ 3 weeks, half 2, ≤10k 1); peak
+  (3/2/1); build (6/6/4); base back to the previous segment; then recovery (marathon+ 2 weeks,
+  else 1). Too close for the full stack → race week, taper and peak are protected, build then
+  base shorten. B races: race week `race` (mini-taper in the weekly plan) then a `down` week,
+  no structural taper. C races: no structural effect. Remaining weeks fill with 3:1 blocks
+  (1, 2, 3, down), never a down week directly before a taper, `general` phase when no race.
+- **Volume bands** (target ± 10%): start at current fitness (4-week average running km, or
+  last 7 days); progressive weeks +9% on the previous progressive week; down 75% of the
+  previous week; taper 75→60→45% of peak; race week ~40%; recovery ~50%; ceilings by the next
+  A race's distance (marathon 85, half 65, 10k 55, 5k 50; general fitness + 20%) and never
+  above the rolling 10%-rule ceiling for the near weeks.
+- **Stability**: weeks 1–2 pinned (stored row reused; a race change inside the week adopts
+  the new structure; a LOAD FLAG or "too hard" check-in lowers the band to last-7 ± 10% with
+  the block position kept), weeks 3–8 firm (structure kept unless a race now dictates
+  taper/race/recovery; band moves ≤ 10% toward the new computation), beyond 8 fuzzy. Past
+  weeks are never rewritten. Recomputed at every generation and every race change.
+- **Consumers**: the weekly generation prompt gets a SEASON POSITION section (phase, block
+  position, band, focus, next race, race in week, stability) instead of the race-goal summary
+  and the streak-based mesocycle line; the LOAD FLAG stays. Dashboard/Plan/Settings chips
+  read the season row and the next race. The voice check-in's race line becomes the season
+  line, adds taper/race-week rules (never add load; ask race-day logistics, sleep, niggles;
+  reassure) and a post-race Sunday flow that records the result.
+- Backend contracts: DESIGN.md §8e.
+
 ## 4. Content and tone
 
 - **UK English everywhere** in app copy and generated content: -ise endings, "sport",

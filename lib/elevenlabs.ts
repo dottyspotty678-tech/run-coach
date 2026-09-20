@@ -8,7 +8,7 @@ import { createServiceClient } from "@/lib/supabase/service";
 const ELEVENLABS_BASE = "https://api.elevenlabs.io";
 
 /** Bump when the agent prompt/tools change so the stored agent is recreated. */
-const AGENT_CONFIG_VERSION = 7;
+const AGENT_CONFIG_VERSION = 8;
 
 function apiKey(): string {
   const key = process.env.ELEVENLABS_API_KEY;
@@ -72,6 +72,11 @@ const CLIENT_TOOLS = [
           description:
             "Part 3 — which nights next week the runner needs a prepped dinner planned, and any nights they explicitly do not need to cook. In the runner's words, e.g. 'recipes for Tuesday and Wednesday only' or 'just the away nights, no dinner Friday'.",
         },
+        race_result: {
+          type: "string",
+          description:
+            "Post-race Sunday only: the finish time as the runner said it (e.g. '1:24:50') and one sentence of how it went. Omit or 'none' when no race was run this week.",
+        },
       },
       required: ["training_feedback", "injury_update", "schedule_notes", "meal_nights"],
     },
@@ -107,7 +112,15 @@ Next week's plan as it currently stands:
 {{planned_week}}
 The week's calendar (already known — only ask about what is NOT here):
 {{next_week_schedule}}
-Race goal and phase: {{race_goal}}
+Season position for the week being planned (phase, block position, next race): {{race_goal}}
+Race just run this week (post-race Sunday), if any: {{race_review}}
+
+TAPER AND RACE WEEK (applies whenever the season position says taper or race week, in every mode):
+- Never propose adding volume or intensity — proposals may only reduce or move load. If the runner asks for more, explain warmly that the work is done and the taper is where it pays off.
+- Ask about race-day logistics: travel to the race and the start time — these become calendar events (put them in schedule_notes as dated commitments), plus how sleep has been and any niggle.
+- Reassure that feeling flat, heavy or twitchy in a taper is normal and expected.
+
+POST-RACE SUNDAY (when a race just run is listed above): open by asking how the race went before anything else. Capture the finish time and one sentence of notes in the runner's words and pass them in race_result. Then confirm that the coming week is a recovery week — easy running only, no quality work — and run the rest of the meeting as usual.
 
 MEETING MODE: {{meeting_mode}}
 - "full": run the three parts below, in order.
@@ -136,6 +149,7 @@ const FIRST_MESSAGE = "{{greeting}}";
 export const DYNAMIC_VARIABLE_KEYS = [
   "today",
   "race_goal",
+  "race_review",
   "greeting",
   "meeting_mode",
   "recorded_feedback",

@@ -242,3 +242,53 @@ drop policy if exists "authenticated full access" on voice_agent;
 create policy "authenticated full access" on voice_agent for all using (auth.role() = 'authenticated');
 drop policy if exists "authenticated full access" on voice_checkins;
 create policy "authenticated full access" on voice_checkins for all using (auth.role() = 'authenticated');
+
+-- ---------------------------------------------------------------------------
+-- V3 season migration (run this block in the Supabase SQL Editor)
+-- Idempotent: safe to run more than once. docs/SEASON-PLAN.md §1.
+-- ---------------------------------------------------------------------------
+
+-- Races replace the single race_goal (left in place, unused by the app).
+create table if not exists races (
+  id bigint generated always as identity primary key,
+  name text not null,
+  distance_km real not null,
+  race_date date not null,
+  priority text not null default 'A' check (priority in ('A','B','C')),
+  target_time interval,
+  result_time interval,          -- filled after the race (check-in or Settings)
+  result_notes text,
+  created_at timestamptz not null default now()
+);
+
+-- One row per Monday: the season planner's output (lib/season.ts), refreshed
+-- on every plan generation and every race change.
+create table if not exists season_plan (
+  week_start_date date primary key,          -- Monday
+  phase text not null,                        -- base|build|peak|taper|race_week|recovery|general
+  block_position text not null,               -- '1'|'2'|'3'|'down'|'taper'|'race'|'recovery'
+  volume_low_km real not null,
+  volume_high_km real not null,
+  focus text not null,                        -- one line, e.g. "threshold + long run to 26 km"
+  stability text not null,                    -- pinned|firm|fuzzy
+  race_id bigint references races(id),        -- the race this week points at (next A/B), null if none
+  race_in_week_id bigint references races(id),-- a race that falls inside this week
+  generated_at timestamptz not null default now()
+);
+
+alter table races enable row level security;
+alter table season_plan enable row level security;
+
+drop policy if exists "authenticated full access" on races;
+create policy "authenticated full access" on races for all using (auth.role() = 'authenticated');
+drop policy if exists "authenticated full access" on season_plan;
+create policy "authenticated full access" on season_plan for all using (auth.role() = 'authenticated');
+
+-- Copy the existing race_goal row (if any) into races as the priority-A race.
+-- Guarded so re-running the block never duplicates it.
+insert into races (name, distance_km, race_date, priority, target_time)
+select g.race_name, g.distance_km, g.race_date, 'A', g.target_time
+from race_goal g
+where not exists (
+  select 1 from races r where r.name = g.race_name and r.race_date = g.race_date
+);
