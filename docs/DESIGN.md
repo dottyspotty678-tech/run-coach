@@ -163,7 +163,11 @@ the full text one tap away. Banners stay one line, always actionable.
 | Offline banner | `components/offline-banner.tsx` | Client; listens to online/offline events. |
 | Dinner card (Dashboard) | rendered in `app/page.tsx` | V2: shown ONLY when today is an away day with a planned prep-ahead meal; links to Nutrition. Home days show no meal card. |
 | Volume lookback card | rendered in `app/page.tsx` | V2: 7-day running km (run-only, U1) in fingerpost lettering + planned-sessions-done summary; opens `/activities`. |
-| Quick actions grid | rendered in `app/page.tsx` | V2: 2x2 — Log a session (sheet), Add a goal race (`/settings#race`), Check-in status/entry (`/checkin`), Ask Coach (voice sheet, `components/ask-coach.tsx`). |
+| Quick actions grid | rendered in `app/page.tsx` | V2: 2x2 — Log a session (sheet), Races / Add a goal race (`/settings#races`), Check-in status/entry (`/checkin`), Ask Coach (voice sheet, `components/ask-coach.tsx`). |
+| Races list | `app/settings/races.tsx` | V3: replaces the single race-goal form. Upcoming races soonest first, then a dimmed "Raced" group; each row: A/B/C priority chip (A = race/accent, B = long, C = rest tokens), name, mono meta line (distance · date · target). "Add a race" opens one form: name, distance preset chips + custom km, date, hh:mm:ss target, A/B/C segmented control with a one-line hint. Edit swaps the row inline; Delete confirms in place (Delete/Keep); past races get "Add result" → finish time + one-line notes (`recordRaceResult`), shown back in bracken green against the target once recorded. |
+| Phase chip | `components/season-ui.tsx` | V3: a waymark tag coloured per season phase, reusing session tokens — base = easy, build = long, peak = intervals, taper = tempo, race week = race, recovery = rest, general = strength. |
+| Season position line | `components/season-ui.tsx` (`SeasonPosition`), rendered in both Plan week cards | V3: ONE line — phase chip · `blockLabel` · countdown to the race the row points at (falls back to the soonest race) · volume band right-aligned in mono; the middle truncates, never wraps. Replaces the `SeasonChips` placeholder. |
+| Season table | `app/season/page.tsx` | V3: read-only, 35 weeks from the boundary week — W/c (mono) · phase chip · block position ("1/3", "Down", "Taper", "Race", "Recovery") · volume band, with a race marker row (priority chip + name) under weeks containing a race. Stability by tone (pinned 1.0, firm 0.85, fuzzy 0.55) with a one-line legend; the current week's phase disc is ringed in accent. Quiet warn banner per pair of A races within 6 weeks. Empty state: "General fitness blocks — add a race to shape the season" → `/settings#races`. |
 | Week summary strip | `.stat-strip` utility, rendered in `app/plan/page.tsx` | A one-line km/sessions readout (summed from `training_plan_json`, never parsed from `week_summary`) standing in for the coach's paragraph; sits in a `<details>`/`<summary>` disclosure ("Summary" / "Close") — the same pattern as the Nutrition recipe cards — that reveals `week_summary` and the revision-note quote on tap. Falls back to a short "Old plan format" line when the plan predates structured days. |
 | Plan week toggle | `app/plan/week-toggle.tsx` | V3: a segmented control — "This week" / "Next week", 44 px targets, each segment carries a waymark dot (accent when active, like the tab bar's active marker). Opens on This week; `?edit=1` opens on Next week. Client-side only — both weeks are fetched server-side in `app/plan/page.tsx` and handed down as already-rendered content; the inactive panel is `hidden`, not unmounted, so Next week's edit state survives a glance at This week. |
 | This week review | `app/plan/this-week-review.tsx` | V4: the route card as a REVIEW surface, read-only, Monday→Sunday. Collapsed rows are a split-sheet of what actually happened: a past (or today-logged) day shows ONLY the logged activities — waymark dot in the matched session colour, label, right-aligned mono figures, stacking when several; "· manual" marks hand-logged entries; a small "Missed" chip appears only on a genuine type mismatch (`sessionDone` false). A past day with nothing shows one quiet line ("Nothing logged" / "Rest day"). Future days (and today before anything's logged) still show the planned title + volume. Expanding a day reveals the PLANNED session (badge, title, detail, why-aside, labelled "Planned" when there's a contrast) with a hairline-divided "What you did" echo of the logged entries, plus the past-day "Log a session" affordance. Titles and labels wrap, never clip. |
@@ -207,14 +211,18 @@ Secondary screens (back affordance in header, no tab highlight):
   Settings → Connections.
 - **Check-in** — `/checkin`, reached from the Dashboard quick action, the Plan week-summary
   link, the Settings row, and the Sunday nudge banner.
+- **Season** — `/season` (V3), back to Plan; reached from the "Season" link on both Plan
+  week-summary cards and from Settings → Races. Read-only 35-week table; links back out to
+  `/settings#races` from its header, its empty state and the close-A-races banner.
 - **PIN screen** — `/pin`, rendered by middleware for unauthenticated requests; verifies via
   `POST /api/pin/verify` with `{ pin: string }` → 200 (cookie set, redirect `/`), 401 (wrong),
   429 + `{ retryAfterSeconds: number }` (lockout).
 
 Cross-links: Dashboard hero → none (it *is* the answer); Dashboard dinner card →
 `/food#d{date}` (away days only); volume card → `/activities`; quick actions → log-session
-sheet, `/settings#race`, `/checkin`, `/plan?edit=1`; sync banners → `/settings#connections`;
-Activity empty state → `/settings#connections`.
+sheet, `/settings#races`, `/checkin`, `/plan?edit=1`; Plan week cards → `/season`; Settings
+→ Races → `/season`; sync banners → `/settings#connections`; Activity empty state →
+`/settings#connections`.
 
 **Sunday-evening state (V2).** From Sunday 17:00 the app shows the upcoming week (§3.3
 boundary). With the v1 week strip retired, a single quiet banner is the one voice: "Next

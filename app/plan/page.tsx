@@ -1,5 +1,4 @@
 import Link from "next/link";
-import { PHASE_LABELS, blockLabel, weeksUntil } from "@/lib/season";
 import {
   parseTrainingDays,
   SESSION_TYPES,
@@ -24,6 +23,7 @@ import {
   getNextRaces,
   getPendingChanges,
   getPlanForWeek,
+  getRaces,
   getRecentActivities,
   getSeasonWeek,
   isRun,
@@ -35,6 +35,7 @@ import {
   type SeasonWeekRow,
 } from "@/components/data";
 import { SESSION_META } from "@/components/session";
+import { SeasonPosition } from "@/components/season-ui";
 import { IconChevronRight } from "@/components/icons";
 import { PlanWeekToggle } from "./week-toggle";
 import { ThisWeekReview, type ReviewRow } from "./this-week-review";
@@ -311,6 +312,7 @@ export default async function PlanPage({
     thisSeason,
     nextSeason,
     nextRaces,
+    races,
     pending,
   ] = await Promise.all([
     getPlanForWeek(thisWeekStart),
@@ -318,10 +320,11 @@ export default async function PlanPage({
     getRecentActivities(28),
     getEventsForWeek(thisWeekStart),
     getEventsForWeek(nextWeekStart),
-    // v3: season rows + next race replace the single race goal / phase maths.
+    // v3: season rows + races replace the single race goal / phase maths.
     getSeasonWeek(thisWeekStart),
     getSeasonWeek(nextWeekStart),
     getNextRaces(today, 1),
+    getRaces(),
     getPendingChanges(nextWeekStart),
   ]);
   const nextRace = nextRaces[0] ?? null;
@@ -386,14 +389,13 @@ export default async function PlanPage({
       ) : (
         <>
           <section className="card flex flex-col gap-2 p-4">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex flex-wrap gap-1.5">
-                <SeasonChips season={thisSeason} nextRace={nextRace} weekStart={thisWeekStart} />
-              </div>
-              <span className="shrink-0 pt-1 text-[11px]" style={{ color: "var(--ink-3)" }}>
-                Generated {relativeTime(thisPlan.generated_at, now)}
-              </span>
-            </div>
+            <SeasonPositionRow
+              season={thisSeason}
+              races={races}
+              nextRace={nextRace}
+              weekStart={thisWeekStart}
+              generatedAt={relativeTime(thisPlan.generated_at, now)}
+            />
             <WeekSummarySection
               plan={thisPlan}
               days={thisDays}
@@ -441,14 +443,13 @@ export default async function PlanPage({
       ) : (
         <>
           <section className="card flex flex-col gap-2 p-4">
-            <div className="flex items-start justify-between gap-2">
-              <div className="flex flex-wrap gap-1.5">
-                <SeasonChips season={nextSeason} nextRace={nextRace} weekStart={nextWeekStart} />
-              </div>
-              <span className="shrink-0 pt-1 text-[11px]" style={{ color: "var(--ink-3)" }}>
-                Generated {relativeTime(nextPlan.generated_at, now)}
-              </span>
-            </div>
+            <SeasonPositionRow
+              season={nextSeason}
+              races={races}
+              nextRace={nextRace}
+              weekStart={nextWeekStart}
+              generatedAt={relativeTime(nextPlan.generated_at, now)}
+            />
             <WeekSummarySection
               plan={nextPlan}
               days={nextDays}
@@ -514,39 +515,41 @@ export default async function PlanPage({
 }
 
 /**
- * v3 position chips for a week-summary card: "Build · week 2 of 3" plus the
- * countdown to the next race, from the season row (docs/SEASON-PLAN.md §6).
- * Minimal placeholder markup — the designer restyles the position line.
+ * v3 season position for a week-summary card — ONE line on both week cards:
+ * "[Build] week 2 of 3 · 9 weeks to Manchester Half          48–58 km",
+ * with the generated-at stamp and a link to the Season screen underneath.
  */
-function SeasonChips({
+function SeasonPositionRow({
   season,
+  races,
   nextRace,
   weekStart,
+  generatedAt,
 }: {
   season: SeasonWeekRow | null;
+  races: RaceRow[];
   nextRace: RaceRow | null;
   weekStart: string;
+  generatedAt: string | null;
 }) {
-  if (!season) {
-    return (
-      <span className="chip" style={{ color: "var(--ink-2)", background: "var(--raised)" }}>
-        General fitness
-      </span>
-    );
-  }
-  const weeks = nextRace ? weeksUntil(weekStart, nextRace.race_date) : null;
   return (
-    <>
-      <span className="chip" style={{ color: "var(--accent)", background: "var(--accent-soft)" }}>
-        {PHASE_LABELS[season.phase]} · {blockLabel(season)}
-      </span>
-      {nextRace && weeks !== null && weeks >= 0 && (
-        <span className="chip" style={{ color: "var(--ink-2)", background: "var(--raised)" }}>
-          {weeks === 0
-            ? `${nextRace.name} this week`
-            : `${weeks} week${weeks === 1 ? "" : "s"} to ${nextRace.name}`}
-        </span>
-      )}
-    </>
+    <div className="flex flex-col gap-1">
+      <SeasonPosition row={season} races={races} fallbackRace={nextRace} weekStart={weekStart} />
+      <div className="flex items-center justify-between gap-2">
+        <Link
+          href="/season"
+          className="flex min-h-[28px] items-center gap-0.5 text-[12px] font-semibold"
+          style={{ color: "var(--accent)" }}
+        >
+          Season
+          <IconChevronRight size={12} strokeWidth={2.4} />
+        </Link>
+        {generatedAt && (
+          <span className="text-[11px]" style={{ color: "var(--ink-3)" }}>
+            Generated {generatedAt}
+          </span>
+        )}
+      </div>
+    </div>
   );
 }
