@@ -27,6 +27,19 @@ week, including when travelling. Time-poor: evenings and weekends are the
 training windows. Coach this person — not an elite. Never prescribe elite
 volumes; take the elite *structure* and scale the *amount*.
 
+### Current calibration (runner-supplied, Sep 2026 — update when fitness changes)
+
+- **Easy / zone 1:** 5:00–5:30 per km. Long runs at the same pace, allowed
+  to drift to ~4:45 late on in build and peak weeks.
+- **Threshold / zone 2 (LT2):** just under 4:00 per km — prescribe threshold
+  work at 3:55–4:05. Estimated half-marathon pace ~3:45–3:50, marathon pace
+  ~3:55–4:00, so for long races zone-2 work and race pace overlap.
+- **Zone 3:** current 5k is about 17:20 (~3:28 per km). 10k pace ~3:36;
+  400 m reps 3:15–3:20 per km effort; hill reps by effort, not pace.
+- Write session paces from these numbers, as ranges. If Strava shows the
+  runner consistently faster or slower than this, trust the data and say so
+  in the week summary.
+
 ## 2. Intensity zones
 
 Use the three-zone model. Elite practice and the evidence are both framed
@@ -189,6 +202,25 @@ single-leg squats) even when the running is paused.
 week on volume or long-run length, one new stressor at a time, and after any
 gap of a week or more the first week back is easy-only and below the
 previous level.
+
+**The 10% rule is enforced on a rolling 7-day window.** The training history
+in the prompt states the running kilometres of the last 7 days, the 7 days
+before that, and a LOAD FLAG when the latest window exceeds the previous one
+by more than 10%. When the flag is set: hold next week's running volume at or
+below the last 7 days, do not add a new stressor, and say in the week summary
+that the week consolidates rather than progresses. When it is not set, the
+stated ceiling (last 7 days + 10%) is the most running volume the week may
+prescribe.
+
+**Recovery signals** — sleep, illness and general fatigue — arrive through
+the weekly check-in and, day to day, through Ask Coach. Act on them:
+- Poor sleep or heavy fatigue reported for a day: keep that day's running
+  easy or make it rest; move the quality session, do not delete it.
+- A head cold with no fever: easy running only until symptoms clear.
+- Fever, chest symptoms or feeling systemically unwell: no running or gym at
+  all; resume with two easy days once fully clear.
+- A week reported as "too hard" or "flat": next week is a consolidation
+  week — volume held or trimmed, one quality session at most.
 
 ## 8. Strength training
 

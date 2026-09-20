@@ -121,6 +121,33 @@ async function buildContext(targetWeekStart?: string): Promise<PlanContext> {
   const lastRunDate = runs[0]?.start_date ? londonDateOf(runs[0].start_date) : null;
   const gapDays = lastRunDate ? daysBetween(lastRunDate, today) : null;
 
+  // Rolling 7-day 10% rule (COACH.md §7): compare the last 7 days of running
+  // with the 7 before. The flag and the ceiling are stated to the planner so
+  // it consolidates rather than progresses after a jump.
+  const dayMs = 86400000;
+  const kmBetween = (fromDaysAgo: number, toDaysAgo: number) =>
+    runs
+      .filter((a) => {
+        const age = now.getTime() - new Date(a.start_date).getTime();
+        return age > toDaysAgo * dayMs && age <= fromDaysAgo * dayMs;
+      })
+      .reduce((sum, a) => sum + a.distance_m / 1000, 0);
+  const last7Km = kmBetween(7, 0);
+  const prev7Km = kmBetween(14, 7);
+  const loadFlag = prev7Km > 0 && last7Km > prev7Km * 1.1;
+  const loadChange = prev7Km > 0 ? Math.round(((last7Km - prev7Km) / prev7Km) * 100) : null;
+  const runningCeilingKm = last7Km > 0 ? last7Km * 1.1 : null;
+  const loadLines = [
+    `Rolling 7-day running volume: last 7 days ${last7Km.toFixed(1)} km; previous 7 days ${prev7Km.toFixed(1)} km${
+      loadChange !== null ? ` (${loadChange >= 0 ? "+" : ""}${loadChange}%)` : ""
+    }.`,
+    loadFlag
+      ? `LOAD FLAG: the last 7 days exceeded the previous 7 by more than 10%. Hold next week's running at or below ${last7Km.toFixed(0)} km, add no new stressor, and label the week as consolidation.`
+      : prev7Km === 0
+        ? "No running in the previous 7-day window — re-entry rules apply (easy only, below the earlier level)."
+        : `No load flag. Running ceiling for the week: ${runningCeilingKm!.toFixed(0)} km (last 7 days + 10%).`,
+  ];
+
   // Supporting sessions summary, e.g. "2 x WeightTraining; 1 x Ride (40 km)".
   const nonRunByType = new Map<string, { count: number; km: number }>();
   for (const a of nonRuns) {
@@ -147,6 +174,7 @@ async function buildContext(targetWeekStart?: string): Promise<PlanContext> {
           )
           .join("; ")}.`,
         `Last run: ${formatDateShort(lastRunDate!)} (${gapDays} day${gapDays === 1 ? "" : "s"} ago).`,
+        ...loadLines,
         nonRunSummary,
         ...(manualCount > 0
           ? [`${manualCount} of these sessions were logged manually (not on Strava).`]
