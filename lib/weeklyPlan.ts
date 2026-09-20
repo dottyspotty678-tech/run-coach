@@ -148,6 +148,31 @@ async function buildContext(targetWeekStart?: string): Promise<PlanContext> {
         : `No load flag. Running ceiling for the week: ${runningCeilingKm!.toFixed(0)} km (last 7 days + 10%).`,
   ];
 
+  // 3:1 loading (COACH.md §5): count consecutive progressive weeks so the
+  // planner knows whether this is a progressive week or the down week. When
+  // planning the week ahead (Sunday evening / check-in), the current week
+  // counts as completed; mid-week revisions look only at fully completed
+  // weeks. A week under 80% of the one before is itself a down week and
+  // resets the count, as does a week with no running.
+  const planningNextWeek = weekStart > thisMonday;
+  const completedWeeks = planningNextWeek
+    ? [weeklyKm[2], weeklyKm[1], weeklyKm[0]]
+    : [weeklyKm[3], weeklyKm[2], weeklyKm[1]]; // oldest -> newest
+  let progressiveStreak = 0;
+  completedWeeks.forEach((km, i) => {
+    const prev = i > 0 ? completedWeeks[i - 1] : null;
+    if (km <= 0 || (prev !== null && prev > 0 && km < prev * 0.8)) {
+      progressiveStreak = 0;
+      return;
+    }
+    progressiveStreak += 1;
+  });
+  loadLines.push(
+    progressiveStreak >= 3
+      ? `Mesocycle: ${progressiveStreak} progressive weeks completed (3:1 loading) — this week is the DOWN week: running volume at 70-80% of last week, at most one quality session, long run shortened, and say so in the week summary.`
+      : `Mesocycle: week ${progressiveStreak + 1} of a 3:1 loading block (${progressiveStreak} progressive week${progressiveStreak === 1 ? "" : "s"} completed) — a progressive week, within the ceiling above.`
+  );
+
   // Supporting sessions summary, e.g. "2 x WeightTraining; 1 x Ride (40 km)".
   const nonRunByType = new Map<string, { count: number; km: number }>();
   for (const a of nonRuns) {

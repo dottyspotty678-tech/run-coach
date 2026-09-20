@@ -126,6 +126,25 @@ polarised:
 - **Post-race.** A recovery week or two: easy running only, or cross-
   training. No quality work. Then re-enter base.
 
+### Loading pattern: 3:1
+
+Inside base, build and peak, weeks run in blocks of four: **three progressive
+weeks, then one down week.** The training history in the prompt states where
+the runner is in the block ("Mesocycle: …") — follow it.
+
+- **Progressive weeks** move volume up within the stated ceiling (never more
+  than ~10% on the previous week), keep two quality sessions, and grow the
+  long run.
+- **The down week** holds running volume at 70–80% of the previous week, has
+  at most one quality session (threshold-biased, shorter than usual), and a
+  long run 20–30% shorter. Strength sessions stay. Label it plainly in the
+  week summary as a consolidation week — this is where adaptation happens,
+  not lost time.
+- Precedence when signals disagree: a down week is a down week even without
+  a LOAD FLAG; a LOAD FLAG or a "too hard" check-in in a progressive week
+  turns that week into a hold, and the block resumes from there. Taper and
+  race week override the pattern entirely.
+
 ## 6. Session library
 
 Scale distances to this runner; the structures come from elite practice.
