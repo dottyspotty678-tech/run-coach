@@ -23,6 +23,8 @@ const TOO_HARD = /too hard|too much|exhaust|wiped|knackered|flat|overdid|struggl
 export type SeasonRefresh = {
   weeks: SeasonWeek[];
   races: RaceRow[];
+  /** Set when the plan was computed but could not be stored, or the refresh failed. */
+  warning?: string;
 };
 
 export async function refreshSeasonPlan(now: Date = new Date()): Promise<SeasonRefresh> {
@@ -82,10 +84,12 @@ export async function refreshSeasonPlan(now: Date = new Date()): Promise<SeasonR
       // Migration not run yet, or a transient failure: the computed plan is
       // still returned so the caller's prompt has a position to work from.
       console.warn("season_plan upsert failed (run the V3 season migration?):", error.message);
+      return { weeks, races, warning: `season_plan upsert failed: ${error.message}` };
     }
     return { weeks, races };
   } catch (err) {
-    console.warn("Season plan refresh failed:", err instanceof Error ? err.message : err);
-    return { weeks: [], races: [] };
+    const message = err instanceof Error ? err.message : String(err);
+    console.warn("Season plan refresh failed:", message);
+    return { weeks: [], races: [], warning: `Season plan refresh failed: ${message}` };
   }
 }
