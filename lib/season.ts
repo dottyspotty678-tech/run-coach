@@ -325,7 +325,11 @@ function computeRaw(input: SeasonInput): SeasonWeek[] {
   // A runner-set band on the planning week recalibrates everything: the curve
   // seeds from its midpoint and the near-week 10% clamp stands aside (the
   // runner has declared what they can do this week).
-  const overrideRow = storedPos.get(weekStarts[blockStartIndex]);
+  // Look in the pinned weeks (next week first, then this week): before the
+  // Sunday 17:00 flip the planning week is still the current one, and a
+  // runner-set band on either is the anchor.
+  const overrideIndex = [1, 0].find((i) => i < N && storedPos.get(weekStarts[i])?.volume_override);
+  const overrideRow = overrideIndex === undefined ? undefined : storedPos.get(weekStarts[overrideIndex]);
   const seedOverridden = Boolean(overrideRow?.volume_override);
   const seed = seedOverridden
     ? (overrideRow!.volume_low_km + overrideRow!.volume_high_km) / 2
@@ -384,7 +388,13 @@ function computeRaw(input: SeasonInput): SeasonWeek[] {
       case "3": {
         const k = seg.progressive.indexOf(i);
         const P = seg.progressive.length;
-        const forward = Math.min(segSeed * Math.pow(PROGRESS, k), seg.ceiling);
+        // The forward curve steps 9% per progressive week FROM the seed week:
+        // week 0 normally, or the runner-set week when one anchors the plan.
+        const kSeed =
+          seedOverridden && overrideIndex !== undefined && seg.start === 0
+            ? Math.max(0, seg.progressive.indexOf(overrideIndex))
+            : 0;
+        const forward = Math.min(segSeed * Math.pow(PROGRESS, Math.max(0, k - kSeed)), seg.ceiling);
         if (seg.hasA) {
           const backward = seg.ceiling / Math.pow(PROGRESS, Math.max(0, P - 1 - k));
           target = Math.min(forward, Math.max(backward, segSeed));
@@ -483,8 +493,7 @@ export function computeSeason(input: SeasonInput): SeasonWeek[] {
   // A runner-set band on the planning week is a deliberate recalibration: the
   // firm weeks adopt the re-seeded curve outright (structure kept) instead of
   // creeping towards it 10% per refresh.
-  const startWeek = input.blockStartWeek ?? mondayOf(input.today);
-  const reseeded = Boolean(stored.get(startWeek)?.volume_override);
+  const reseeded = raw.slice(0, 2).some((n) => stored.get(n.week_start_date)?.volume_override);
 
   return raw.map((n, i) => {
     const s = stored.get(n.week_start_date);
