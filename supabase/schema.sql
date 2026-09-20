@@ -296,3 +296,22 @@ where not exists (
 -- V3b migration (run this block in the Supabase SQL Editor)
 -- Runner-set weekly volume bands survive refreshes and re-seed the curve.
 alter table season_plan add column if not exists volume_override boolean not null default false;
+
+-- ---------------------------------------------------------------------------
+-- Watch sync migration (run this block in the Supabase SQL Editor)
+-- Idempotent: safe to run more than once. docs/WATCH-SYNC.md §4.
+-- ---------------------------------------------------------------------------
+
+-- One row per plan week: when it last reached intervals.icu (→ Coros), how
+-- many events went, and the last error if the most recent push failed.
+create table if not exists watch_sync (
+  week_start_date date primary key,          -- Monday
+  pushed_at timestamptz,
+  events_pushed integer not null default 0,
+  last_error text
+);
+
+alter table watch_sync enable row level security;
+
+drop policy if exists "authenticated full access" on watch_sync;
+create policy "authenticated full access" on watch_sync for all using (auth.role() = 'authenticated');

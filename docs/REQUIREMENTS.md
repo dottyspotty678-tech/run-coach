@@ -498,6 +498,28 @@ says what to change, and gets a revision — then treats the plan as final.
   reassure) and a post-race Sunday flow that records the result.
 - Backend contracts: DESIGN.md §8e.
 
+### 3.16 Watch sync — the confirmed week on the Coros watch (Must — added in v3; contract in docs/WATCH-SYNC.md)
+
+- **Bridge**: intervals.icu's write API (HTTP Basic `API_KEY:<key>`, athlete `0`; the runner
+  holds the key and sets `INTERVALS_ICU_API_KEY` in Vercel, never in the repo). Planned
+  workouts are upserted per day on `external_id = runcoach:<date>`; intervals.icu pushes the
+  coming week to Coros on every change.
+- **What is pushed**: running days (easy/tempo/intervals/long/race) as structured `Run`
+  workouts with a pace target, built from the plan's new `steps` (warm-up, work, recoveries,
+  cool-down; each step one of minutes/km with a pace range from the COACH.md calibration;
+  repeats depth 1, 1–20 times; totals within ±10% of `duration_min`) — or the session prose
+  when a day has no usable steps (older plans included). Strength days as simple
+  `WeightTraining` events. Rest and cross days: no event, and any earlier event for that date
+  is deleted. Start times default to 18:30 Mon–Fri and 09:00 Sat–Sun (local wall clock).
+- **Triggers**: after every successful plan generation (cron, manual, revise, pending-batch
+  apply, coach session) and on voice check-in confirm — best-effort: a failed push never
+  fails the generation. A manual "Send to watch" action re-pushes a week.
+- **Status**: `watch_sync` per week — `pushed_at`, `events_pushed`, `last_error` — shown on
+  the Plan week card ("On watch · 3 runs, 2 gym · synced 2 min ago" / "Not on watch yet" /
+  the error) with a Send/Resend button, and on Settings → Connections as an intervals.icu
+  card (Connected when the key is present, last push, "Send this week").
+- Backend contracts: DESIGN.md §8f.
+
 ## 4. Content and tone
 
 - **UK English everywhere** in app copy and generated content: -ise endings, "sport",

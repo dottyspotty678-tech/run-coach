@@ -3,6 +3,7 @@ import { z } from "zod";
 import { zodOutputFormat } from "@anthropic-ai/sdk/helpers/zod";
 import { createServiceClient } from "@/lib/supabase/service";
 import { generateWeeklyPlan } from "@/lib/weeklyPlan";
+import { pushWeek } from "@/lib/intervals";
 import { refreshSeasonPlan } from "@/lib/seasonPlan";
 import { parseIntervalText, seasonLine } from "@/lib/season";
 import { isTrainingDay, parseAwayMeals } from "@/lib/planTypes";
@@ -599,7 +600,7 @@ export async function applyCheckin(proposalId: string): Promise<{ spoken_result:
         `- No cooked meal needed on: ${proposal.no_cook_dates.map(formatDateShort).join(", ")} (these days carry no prep-ahead meal).`
       );
     }
-    await generateWeeklyPlan({
+    const regenerated = await generateWeeklyPlan({
       revisionNote: `From the Sunday voice check-in — apply ALL of these together:\n${lines.join("\n")}`,
       skipMealDates: proposal.no_cook_dates,
       ...(proposal.meal_dates.length > 0 ? { mealDates: proposal.meal_dates } : {}),
@@ -609,6 +610,12 @@ export async function applyCheckin(proposalId: string): Promise<{ spoken_result:
       fromVoiceCheckin: true,
     });
     done.push("updated next week's training and meal plan");
+    if (regenerated.watch?.ok && regenerated.watch.pushed > 0) done.push("sent the week to your watch");
+  } else {
+    // Watch sync (docs/WATCH-SYNC.md §4): the confirmed week always goes to the
+    // watch — here the plan stood unchanged, so generateWeeklyPlan did not push.
+    const watch = await pushWeek(weekStart);
+    if (watch.ok && watch.pushed > 0) done.push("sent the week to your watch");
   }
   const hasChanges = currentWeekChanges.length > 0 || hasPlanWeekChanges;
 

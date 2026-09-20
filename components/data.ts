@@ -618,6 +618,36 @@ export async function getSeasonPlan(fromWeek: string, weeks: number): Promise<Se
   }
 }
 
+// ---------------------------------------------------------------------------
+// Watch sync (docs/WATCH-SYNC.md §4) — read side. Contract in DESIGN.md §8f.
+// Degrades silently until the watch sync migration has run.
+// ---------------------------------------------------------------------------
+
+export type WatchSyncRow = {
+  week_start_date: string;
+  /** Last successful push, or null when the week has never reached the watch. */
+  pushed_at: string | null;
+  events_pushed: number;
+  /** Set when the most recent attempt failed; null after a clean push. */
+  last_error: string | null;
+};
+
+/** Watch-sync status for a plan week, or null when never attempted. */
+export async function getWatchSync(weekStart: string): Promise<WatchSyncRow | null> {
+  try {
+    const supabase = createServiceClient();
+    const { data, error } = await supabase
+      .from("watch_sync")
+      .select("week_start_date, pushed_at, events_pushed, last_error")
+      .eq("week_start_date", weekStart)
+      .maybeSingle();
+    if (error || !data) return null;
+    return data as WatchSyncRow;
+  } catch {
+    return null;
+  }
+}
+
 /** Most recent successful sync across providers, or null when unknown. */
 export function lastSuccessfulSync(
   status: Partial<Record<"strava" | "microsoft", SyncStatus>>

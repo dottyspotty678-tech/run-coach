@@ -3,8 +3,29 @@
 import { createServiceClient } from "@/lib/supabase/service";
 import { refreshSeasonPlan } from "@/lib/seasonPlan";
 import { parseIntervalText } from "@/lib/season";
+import { pushWeek, type PushResult } from "@/lib/intervals";
 import { boundaryWeekStart, mondayOf, todayISO } from "@/components/dates";
 import { revalidatePath } from "next/cache";
+
+// ---------------------------------------------------------------------------
+// Watch sync (docs/WATCH-SYNC.md §4) — the manual "Send to watch" action.
+// Contract in docs/DESIGN.md §8f.
+// ---------------------------------------------------------------------------
+
+/**
+ * Pushes a stored plan week to intervals.icu (→ Coros). Accepts a Monday
+ * (YYYY-MM-DD) directly or a form with a `week_start_date` field; any date is
+ * snapped to its Monday, a missing one means the plan (boundary) week.
+ * Never throws — returns the PushResult; the outcome is also in watch_sync.
+ */
+export async function pushWeekToWatch(input: FormData | string): Promise<PushResult> {
+  const raw = typeof input === "string" ? input : String(input.get("week_start_date") ?? "");
+  const week = /^\d{4}-\d{2}-\d{2}$/.test(raw) ? mondayOf(raw) : boundaryWeekStart(new Date());
+  const result = await pushWeek(week);
+  revalidatePath("/plan");
+  revalidatePath("/settings");
+  return result;
+}
 
 function splitList(value: string): string[] {
   return value

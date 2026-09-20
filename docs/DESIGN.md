@@ -520,6 +520,70 @@ in the reviewed week (or "none"); `submit_checkin` accepts an optional
 null`, and apply writes `races.result_time` / `result_notes` then refreshes
 the plan.
 
+## 8f. Watch sync (intervals.icu → Coros) — backend interface
+
+Contract for the Plan status line + Send button and the Settings intervals.icu
+connection card (docs/WATCH-SYNC.md §4). Same style as §7–§8e. Everything
+degrades silently until the watch sync migration has run and the key is set.
+
+### Event shape (`IcuEvent` in `lib/intervals.ts`, built by `eventsForWeek(days, weekStart)`)
+
+```ts
+{
+  category: "WORKOUT";
+  start_date_local: string;   // "2026-09-22T18:30:00" — 18:30 Mon–Fri, 09:00 Sat–Sun
+  type: "Run" | "WeightTraining";
+  name: string;               // the day's title
+  description: string;        // workout text from steps, or the session prose
+  moving_time: number;        // duration_min * 60
+  external_id: string;        // "runcoach:<YYYY-MM-DD>" — upsert/delete key
+  target?: "PACE";            // runs only
+}
+```
+
+Runs → `Run` + `PACE`; strength → `WeightTraining`; rest/cross → no event (and
+the date's stale event is bulk-deleted). `TrainingDay.steps?: WorkoutStep[]`
+(`lib/planTypes.ts`) is the structured source; `parseTrainingDays` accepts
+rows with or without it. If the UI ever wants to show the steps, a plain step
+is `{ kind: "step", label?, minutes? | km?, pace_low?, pace_high? }` and a
+repeat is `{ kind: "repeat", times, steps }`.
+
+### Status row (`components/data.ts`)
+
+- `getWatchSync(weekStart): Promise<WatchSyncRow | null>` —
+  `{ week_start_date, pushed_at: string | null, events_pushed: number, last_error: string | null }`.
+  Null = never attempted → "Not on watch yet". `last_error` set → show the
+  error (with `pushed_at` still naming the last good push, if any).
+  `pushed_at` set and `last_error` null → "On watch · synced {relativeTime}".
+  The "3 runs, 2 gym" breakdown comes from the plan's `training_plan_json`
+  (count session types), not from the row — `events_pushed` is the total.
+- `isIntervalsConfigured()` (`lib/intervals.ts`, server-side) — true when
+  `INTERVALS_ICU_API_KEY` is set: drives "Connected / Not connected" on the
+  Settings card. There is no OAuth; "connect" means adding the env var.
+
+### Server action (`app/settings/actions.ts`)
+
+- `pushWeekToWatch(input: FormData | string): Promise<PushResult>` — pass a
+  Monday (YYYY-MM-DD) or a form with `week_start_date`; missing → the boundary
+  week. Returns `{ ok, pushed, deleted, error? }` and never throws; also
+  revalidates `/plan` and `/settings`. Use it for the Plan card's Send/Resend
+  button and the Settings card's "Send this week".
+
+### Where status shows
+
+- Plan week card (this week and next week): one status line from
+  `getWatchSync(weekStart)` + a Send/Resend button.
+- Settings → Connections: an intervals.icu card — Connected when
+  `isIntervalsConfigured()`, last push from `getWatchSync(boundaryWeekStart())`,
+  a "Send this week" action, and one line telling the runner to enable "upload
+  planned workouts" in intervals.icu's Coros settings.
+- Voice check-in: the spoken wrap-up already says "sent the week to your
+  watch" when the push succeeded.
+
+Triggers you get for free: every successful `generateWeeklyPlan` pushes its
+target week (result on `watch` in its return value); the check-in apply pushes
+even when the plan stood unchanged.
+
 ## 9. States checklist (stress-tester map)
 
 Every tab screen implements: **loading** (route `loading.tsx` skeletons), **empty** (specified

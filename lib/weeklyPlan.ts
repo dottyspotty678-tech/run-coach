@@ -3,7 +3,10 @@ import { coachBrief } from "@/lib/coachBrief";
 import { createServiceClient } from "@/lib/supabase/service";
 import { refreshSeasonPlan } from "@/lib/seasonPlan";
 import { PHASE_LABELS, blockLabel, weeksUntil } from "@/lib/season";
+import { pushWeek, type PushResult } from "@/lib/intervals";
 import {
+  coerceWorkoutSteps,
+  estimateStepMinutes,
   isAwayMealEntry,
   isShoppingItem,
   isTrainingDay,
@@ -360,6 +363,40 @@ const WEEKLY_PLAN_TOOL = {
               type: "boolean",
               description: "True only for the travel dates given in the prompt.",
             },
+            steps: {
+              type: "array",
+              description:
+                "Structured workout steps for RUNNING days only (easy, tempo, intervals, long, race) — warm-up, work, recoveries, cool-down — pushed to the runner's watch. Omit for rest, strength and cross days. Each plain step has EXACTLY ONE of minutes or km plus a pace range; a repeat wraps plain steps (never another repeat). The steps must add up to duration_min within 10%.",
+              items: {
+                type: "object",
+                properties: {
+                  kind: { type: "string", enum: ["step", "repeat"] },
+                  label: { type: "string", description: 'Plain step: short name, e.g. "Warm-up", "Threshold", "Recovery", "Cool-down".' },
+                  minutes: { type: "number", description: "Plain step: duration in minutes (omit when km is set)." },
+                  km: { type: "number", description: "Plain step: distance in kilometres, e.g. 0.4 for 400 m (omit when minutes is set)." },
+                  pace_low: { type: "string", description: 'Plain step: fastest pace of the range as m:ss per km, e.g. "3:55".' },
+                  pace_high: { type: "string", description: 'Plain step: slowest pace of the range as m:ss per km, e.g. "4:05".' },
+                  times: { type: "integer", description: "Repeat: how many times (1–20)." },
+                  steps: {
+                    type: "array",
+                    description: "Repeat: the plain steps repeated, e.g. a work step then a recovery step.",
+                    items: {
+                      type: "object",
+                      properties: {
+                        kind: { type: "string", enum: ["step"] },
+                        label: { type: "string" },
+                        minutes: { type: "number" },
+                        km: { type: "number" },
+                        pace_low: { type: "string" },
+                        pace_high: { type: "string" },
+                      },
+                      required: ["kind"],
+                    },
+                  },
+                },
+                required: ["kind"],
+              },
+            },
           },
           required: [
             "date",
@@ -596,6 +633,7 @@ TRAINING RULES:
 - Set is_travel_day true only for the travel dates listed above.
 - duration_min is 0 for rest days. Rest days still get a proper title, detail and why — never an empty entry.
 - Any total volume stated in week_summary MUST equal what the seven training_days actually add up to — recount the sessions before writing it (f-1).
+- STRUCTURED STEPS (the session lands on the runner's watch): every running day (easy, tempo, intervals, long, race) carries "steps" — warm-up, the work, recoveries, cool-down. Each plain step has EXACTLY ONE of minutes or km (kilometres — write 400 m as 0.4) and a pace RANGE as pace_low/pace_high in m:ss per km taken from the coaching brief's calibration: easy and long runs 5:00–5:30, threshold 3:55–4:05, marathon pace 3:55–4:00, half-marathon pace 3:45–3:50, 10k pace 3:33–3:40, 5k pace 3:25–3:32, 400 m reps 3:15–3:20, jog recoveries 5:30–6:00. Repeats are {kind:"repeat", times, steps} holding plain steps only (never a repeat inside a repeat), times between 1 and 20. The steps' total time must match duration_min within 10%. Rest, strength and cross days carry no steps.
 
 MEAL-PREP RULES (v2 — meals exist ONLY for the away days listed above):
 - One real recipe per away day, nothing for home days. Do not produce eating-out guidance, restaurant advice or placeholder meals anywhere — that model is retired.
@@ -693,17 +731,37 @@ function coerceTrainingDay(
 ): TrainingDay {
   const session_type = coerceSessionType(raw.session_type, warnings);
   const title = coerceString(raw.title, SESSION_LABELS[session_type]);
-  return {
+  const duration_min = coerceMinutes(raw.duration_min);
+  const day: TrainingDay = {
     date,
     session_type,
     title,
     detail: coerceString(raw.detail, title),
-    duration_min: coerceMinutes(raw.duration_min),
+    duration_min,
     why: coerceString(raw.why),
     // Echo the calendar's travel flags exactly, whatever the model said.
     is_travel_day: isTravel,
   };
+  // Watch sync (docs/WATCH-SYNC.md §2): structured steps on running days only;
+  // coerce rather than fail, warn when the total drifts from duration_min.
+  if (RUN_SESSION_TYPES.has(session_type)) {
+    const steps = coerceWorkoutSteps(raw.steps);
+    if (steps.length > 0) {
+      day.steps = steps;
+      const est = estimateStepMinutes(steps);
+      if (duration_min > 0 && Math.abs(est - duration_min) > duration_min * 0.1) {
+        warnings.push(
+          `Steps for ${date} add up to ~${Math.round(est)} min against duration_min ${duration_min}`
+        );
+      }
+    } else {
+      warnings.push(`No usable steps for running day ${date} — will push to the watch as prose`);
+    }
+  }
+  return day;
 }
+
+const RUN_SESSION_TYPES: ReadonlySet<SessionType> = new Set(["easy", "tempo", "intervals", "long", "race"]);
 
 /** V2: coerce a recipe ingredient list — strings become {item, quantity: ""}. */
 function coerceIngredients(raw: unknown, date: string, warnings: string[]): RecipeIngredient[] {
@@ -1140,10 +1198,20 @@ ${revisionNote}`
     if (retryError) throw new Error(`Failed to store weekly plan: ${retryError.message}`);
   }
 
+  // Watch sync (docs/WATCH-SYNC.md §4): every stored week goes to the watch,
+  // best-effort — pushWeek never throws and records its outcome in watch_sync.
+  let watch: PushResult | null = null;
+  try {
+    watch = await pushWeek(context.weekStart);
+  } catch (err) {
+    console.warn("Watch push failed after generation:", err instanceof Error ? err.message : err);
+  }
+
   return {
     week_start_date: context.weekStart,
     week_summary: validated.week_summary,
     revised: revision !== null,
+    watch,
   };
 }
 

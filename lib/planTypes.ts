@@ -28,6 +28,22 @@ export const SESSION_TYPES: readonly SessionType[] = [
   "race",
 ];
 
+/**
+ * Watch sync (docs/WATCH-SYNC.md §2): one structured workout step. A plain
+ * step has exactly one of minutes/km and an optional pace range ("m:ss" per
+ * km); a repeat holds plain steps only (depth 1) and runs 1–20 times.
+ */
+export type WorkoutStep =
+  | {
+      kind: "step";
+      label?: string;
+      minutes?: number;
+      km?: number;
+      pace_low?: string;
+      pace_high?: string;
+    }
+  | { kind: "repeat"; times: number; steps: WorkoutStep[] };
+
 export type TrainingDay = {
   /** YYYY-MM-DD */
   date: string;
@@ -42,7 +58,97 @@ export type TrainingDay = {
   why: string;
   /** Echoed from the calendar input */
   is_travel_day: boolean;
+  /** Structured steps for running days (watch sync). Absent on older plans. */
+  steps?: WorkoutStep[];
 };
+
+const PACE_RE = /^\d{1,2}:\d{2}$/;
+
+function finitePositive(v: unknown): number | null {
+  const n = typeof v === "number" ? v : typeof v === "string" ? Number(v) : NaN;
+  return Number.isFinite(n) && n > 0 ? n : null;
+}
+
+/** Runtime guard for a single step (plain or one-level repeat). */
+export function isWorkoutStep(v: unknown): v is WorkoutStep {
+  if (typeof v !== "object" || v === null || Array.isArray(v)) return false;
+  const r = v as Record<string, unknown>;
+  if (r.kind === "repeat") {
+    return (
+      typeof r.times === "number" &&
+      Array.isArray(r.steps) &&
+      r.steps.every((s) => isWorkoutStep(s) && (s as { kind: string }).kind === "step")
+    );
+  }
+  if (r.kind !== "step") return false;
+  const hasMinutes = typeof r.minutes === "number";
+  const hasKm = typeof r.km === "number";
+  return hasMinutes !== hasKm; // exactly one of the two
+}
+
+/**
+ * Coerce model output into valid steps: malformed steps are dropped, a step
+ * with both minutes and km keeps minutes, paces must be "m:ss", repeat times
+ * clamp to 1–20 and nested repeats are dropped (depth 1 only). Returns [] when
+ * nothing usable remains — the day then pushes to the watch as prose.
+ */
+export function coerceWorkoutSteps(raw: unknown): WorkoutStep[] {
+  if (!Array.isArray(raw)) return [];
+  const plain = (v: unknown): WorkoutStep | null => {
+    if (typeof v !== "object" || v === null || Array.isArray(v)) return null;
+    const r = v as Record<string, unknown>;
+    if (r.kind === "repeat" || Array.isArray(r.steps)) return null; // no nesting
+    const minutes = finitePositive(r.minutes);
+    const km = finitePositive(r.km);
+    if (minutes === null && km === null) return null;
+    const step: WorkoutStep = { kind: "step" };
+    if (typeof r.label === "string" && r.label.trim()) step.label = r.label.trim();
+    if (minutes !== null) step.minutes = Math.round(minutes * 10) / 10;
+    else step.km = Math.round(km! * 100) / 100;
+    const lo = typeof r.pace_low === "string" && PACE_RE.test(r.pace_low.trim()) ? r.pace_low.trim() : null;
+    const hi = typeof r.pace_high === "string" && PACE_RE.test(r.pace_high.trim()) ? r.pace_high.trim() : null;
+    if (lo || hi) {
+      step.pace_low = lo ?? hi!;
+      step.pace_high = hi ?? lo!;
+    }
+    return step;
+  };
+  const out: WorkoutStep[] = [];
+  for (const v of raw) {
+    if (typeof v !== "object" || v === null || Array.isArray(v)) continue;
+    const r = v as Record<string, unknown>;
+    if (r.kind === "repeat" || Array.isArray(r.steps)) {
+      const times = finitePositive(r.times);
+      const inner = Array.isArray(r.steps)
+        ? r.steps.map(plain).filter((s): s is WorkoutStep => s !== null)
+        : [];
+      if (inner.length === 0) continue;
+      out.push({ kind: "repeat", times: Math.min(20, Math.max(1, Math.round(times ?? 1))), steps: inner });
+      continue;
+    }
+    const step = plain(v);
+    if (step) out.push(step);
+  }
+  return out;
+}
+
+/** Estimated minutes for steps (km steps use the pace-range midpoint, else 5:00/km). */
+export function estimateStepMinutes(steps: WorkoutStep[]): number {
+  const paceMinutes = (p: string | undefined): number | null => {
+    if (!p || !PACE_RE.test(p)) return null;
+    const [m, s] = p.split(":").map(Number);
+    return m + s / 60;
+  };
+  const one = (s: WorkoutStep): number => {
+    if (s.kind === "repeat") return s.times * s.steps.reduce((acc, x) => acc + one(x), 0);
+    if (s.minutes !== undefined) return s.minutes;
+    const lo = paceMinutes(s.pace_low);
+    const hi = paceMinutes(s.pace_high);
+    const pace = lo !== null && hi !== null ? (lo + hi) / 2 : (lo ?? hi ?? 5);
+    return (s.km ?? 0) * pace;
+  };
+  return steps.reduce((acc, s) => acc + one(s), 0);
+}
 
 // ---------------------------------------------------------------------------
 // Meals — v2 (REDESIGN-V2.md §Screen 3): meal-prep model. Meals exist ONLY
@@ -201,7 +307,8 @@ export function isTrainingDay(v: unknown): v is TrainingDay {
     typeof v.why === "string" &&
     typeof v.duration_min === "number" &&
     typeof v.is_travel_day === "boolean" &&
-    SESSION_TYPES.includes(v.session_type as SessionType)
+    SESSION_TYPES.includes(v.session_type as SessionType) &&
+    (v.steps === undefined || (Array.isArray(v.steps) && v.steps.every(isWorkoutStep)))
   );
 }
 
