@@ -458,6 +458,7 @@ function computeRaw(input: SeasonInput): SeasonWeek[] {
       stability: "fuzzy",
       race_id: pointing?.id ?? null,
       race_in_week_id: s.raceInWeek?.id ?? null,
+      volume_override: false,
     });
   }
   return rows;

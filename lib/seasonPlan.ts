@@ -158,7 +158,16 @@ export async function refreshSeasonPlan(now: Date = new Date()): Promise<SeasonR
       "upsert",
       trace,
       Promise.resolve(
-        supabase.from("season_plan").upsert(weeks.map((w) => ({ ...w, generated_at: generatedAt })))
+        // Every row must carry the same keys: PostgREST fills a key missing
+        // from some rows of a bulk upsert with NULL (not the column default),
+        // which violates volume_override's NOT NULL constraint.
+        supabase.from("season_plan").upsert(
+          weeks.map((w) => ({
+            ...w,
+            volume_override: w.volume_override ?? false,
+            generated_at: generatedAt,
+          }))
+        )
       )
     );
     if (error) {
