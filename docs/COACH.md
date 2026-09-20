@@ -94,7 +94,9 @@ Name zones in plans by feel and pace, not heart-rate numbers.
   build/peak weeks. It is the week's most protected running session
   (*coach translation*: cap it at roughly a third of the week's volume).
 - **Two gym strength sessions per week** (see §8), defaulting to Tuesday and
-  Saturday. A short strength session may share a day with an easy run.
+  Sunday. The long run therefore defaults to Saturday — never stack the long
+  run and a gym session on the same day. A short strength session may share
+  a day with an easy run.
 - **Avoid monotony.** Vary session formats week to week; identical weeks
   blunt adaptation and raise overreaching risk.
 - Travel days take rest, easy running, strength (gyms travel) or a short

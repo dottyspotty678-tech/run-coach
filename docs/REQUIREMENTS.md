@@ -183,8 +183,9 @@ Generation logic requirements (the prompt must instruct Claude accordingly):
 - If no race goal is set, plan for general fitness and say so in `week_summary`.
 - **Strength training (Must — added in fix round 1, U2)**: every weekly plan includes exactly
   two strength sessions (`session_type: strength`), one weekday and one weekend day, defaulting
-  to Tuesday and Saturday unless the calendar makes those impossible (then the nearest sensible
-  days). Strength sessions are ALWAYS gym-based — the user has gym access even when travelling
+  to Tuesday and Sunday unless the calendar makes those impossible (then the nearest sensible
+  days); the long run then defaults to Saturday and never shares a day with a gym session
+  (changed from Tuesday/Saturday on 20 Sep 2026). Strength sessions are ALWAYS gym-based — the user has gym access even when travelling
   (hotel or nearby); never prescribe bodyweight-only or hotel-room variants. A short strength
   session may share its day with an easy run.
 - **Running vs supporting training (Must — added in fix round 1, U1)**: only Strava running
