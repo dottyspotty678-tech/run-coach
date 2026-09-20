@@ -25,17 +25,45 @@ export type SeasonRefresh = {
   races: RaceRow[];
   /** Set when the plan was computed but could not be stored, or the refresh failed. */
   warning?: string;
+  /** Per-step timings ("races 120ms"), so a stalled call can be named. */
+  trace: string[];
 };
+
+// No database call may stall the planner: a hung request would otherwise
+// freeze every plan generation until the platform kills the function.
+const STEP_TIMEOUT_MS = 15000;
+
+async function timed<T>(label: string, trace: string[], work: Promise<T>): Promise<T> {
+  const started = Date.now();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_, reject) => {
+    timer = setTimeout(
+      () => reject(new Error(`${label} timed out after ${STEP_TIMEOUT_MS} ms`)),
+      STEP_TIMEOUT_MS
+    );
+  });
+  try {
+    const result = await Promise.race([work, timeout]);
+    trace.push(`${label} ${Date.now() - started}ms`);
+    return result;
+  } catch (err) {
+    trace.push(`${label} FAILED after ${Date.now() - started}ms`);
+    throw err;
+  } finally {
+    if (timer) clearTimeout(timer);
+  }
+}
 
 export async function refreshSeasonPlan(now: Date = new Date()): Promise<SeasonRefresh> {
   const today = todayISO(now);
   const w0 = mondayOf(today);
+  const trace: string[] = [];
   try {
     const [races, activities, stored, feedback] = await Promise.all([
-      getRaces(),
-      getRecentActivities(28),
-      getSeasonPlan(w0, HORIZON_WEEKS),
-      getRecentFeedback(1),
+      timed("races", trace, getRaces()),
+      timed("activities", trace, getRecentActivities(28)),
+      timed("stored season", trace, getSeasonPlan(w0, HORIZON_WEEKS)),
+      timed("feedback", trace, getRecentFeedback(1)),
     ]);
 
     // Current fitness: 4-week average weekly running km (falls back to last 7).
@@ -77,19 +105,23 @@ export async function refreshSeasonPlan(now: Date = new Date()): Promise<SeasonR
 
     const supabase = createServiceClient();
     const generatedAt = now.toISOString();
-    const { error } = await supabase
-      .from("season_plan")
-      .upsert(weeks.map((w) => ({ ...w, generated_at: generatedAt })));
+    const { error } = await timed(
+      "upsert",
+      trace,
+      Promise.resolve(
+        supabase.from("season_plan").upsert(weeks.map((w) => ({ ...w, generated_at: generatedAt })))
+      )
+    );
     if (error) {
       // Migration not run yet, or a transient failure: the computed plan is
       // still returned so the caller's prompt has a position to work from.
       console.warn("season_plan upsert failed (run the V3 season migration?):", error.message);
-      return { weeks, races, warning: `season_plan upsert failed: ${error.message}` };
+      return { weeks, races, trace, warning: `season_plan upsert failed: ${error.message}` };
     }
-    return { weeks, races };
+    return { weeks, races, trace };
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    console.warn("Season plan refresh failed:", message);
-    return { weeks: [], races: [], warning: `Season plan refresh failed: ${message}` };
+    console.warn("Season plan refresh failed:", message, trace.join(", "));
+    return { weeks: [], races: [], trace, warning: `Season plan refresh failed: ${message}` };
   }
 }

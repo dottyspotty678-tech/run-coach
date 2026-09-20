@@ -9,6 +9,7 @@ export async function POST() {
   return NextResponse.json({
     ok: !result.warning,
     warning: result.warning ?? null,
+    trace: result.trace,
     races: result.races.length,
     weeks: result.weeks.slice(0, 10).map((w) => ({
       week: w.week_start_date,
