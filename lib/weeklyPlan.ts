@@ -1,4 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
+import { coachBrief } from "@/lib/coachBrief";
 import { createServiceClient } from "@/lib/supabase/service";
 import { getTrainingPhase } from "@/lib/trainingPhase";
 import {
@@ -249,7 +250,9 @@ ${feedbackLines}`;
 // - Items 1 (AND/DC/ACSM 2016), 2 (ISSN nutrient timing 2017) and 6 (ACSM
 //   fluid replacement 2007): carbohydrate-forward fuelling around hard/long
 //   sessions and sensible hydration, kept qualitative in this app.
-const EVIDENCE_PRINCIPLES = `TRAINING AND NUTRITION PRINCIPLES (evidence-based — follow these):
+// Fallback only: docs/COACH.md (via coachBrief) is the live brief and
+// supersedes this block whenever the file is readable.
+export const EVIDENCE_PRINCIPLES = `TRAINING AND NUTRITION PRINCIPLES (evidence-based — follow these):
 - Keep roughly 80% of the week's running volume at low, conversational intensity; concentrate hard work into one or two quality sessions (polarised intensity distribution).
 - Two gym-based strength sessions per week with substantive loading support running economy — they complement the running, they do not replace it.
 - Never pair high running mileage with aggressive energy restriction. Even when the weight goal is "lose", keep meals satisfying and fuel hard days properly — under-fuelling harms both health and performance.
@@ -518,7 +521,7 @@ ${context.sections.settingsSummary}
 CONTEXT FROM THE RUNNER:
 ${context.sections.runnerContext}
 
-${EVIDENCE_PRINCIPLES}
+${coachBrief(EVIDENCE_PRINCIPLES)}
 
 TRAINING RULES:
 - Phase-appropriate sessions: protect the long run in base/build, sharpen in peak, visibly cut load in taper and race week, prescribe recovery post-race. If no race is set, plan for general fitness and say so in week_summary.
