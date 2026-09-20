@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { refreshSeasonPlan } from "@/lib/seasonPlan";
+import { loadSeasonInputs, refreshSeasonPlan } from "@/lib/seasonPlan";
 
 // Re-runs the season planner on demand (PIN-gated by the middleware like every
 // other /api route). No Claude call. Returns the storage warning, if any, and
@@ -12,7 +12,13 @@ export async function GET() {
   return NextResponse.json({ ok: true, commit: COMMIT });
 }
 
-export async function POST() {
+export async function POST(request: Request) {
+  // ?dry=1 — return the planner's exact inputs without computing or writing,
+  // so a hang in the pure planner can be reproduced offline with real data.
+  if (new URL(request.url).searchParams.get("dry") === "1") {
+    const inputs = await loadSeasonInputs();
+    return NextResponse.json({ ok: true, commit: COMMIT, ...inputs });
+  }
   const result = await refreshSeasonPlan();
   return NextResponse.json({
     ok: !result.warning,

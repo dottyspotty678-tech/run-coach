@@ -54,6 +54,55 @@ async function timed<T>(label: string, trace: string[], work: Promise<T>): Promi
   }
 }
 
+/** Diagnostic: the planner's exact inputs, without computing or writing. */
+export type SeasonInputsDump = {
+  today: string;
+  w0: string;
+  races: RaceRow[];
+  currentFitnessKm: number;
+  last7Km: number;
+  loadFlag: boolean;
+  tooHardCheckin: boolean;
+  stored: SeasonWeek[];
+  trace: string[];
+};
+
+export async function loadSeasonInputs(now: Date = new Date()): Promise<SeasonInputsDump> {
+  const today = todayISO(now);
+  const w0 = mondayOf(today);
+  const trace: string[] = [];
+  const [races, activities, stored, feedback] = await Promise.all([
+    timed("races", trace, getRaces()),
+    timed("activities", trace, getRecentActivities(28)),
+    timed("stored season", trace, getSeasonPlan(w0, HORIZON_WEEKS)),
+    timed("feedback", trace, getRecentFeedback(1)),
+  ]);
+  const runs = activities.filter((a) => isRun(a.type));
+  const dayMs = 86400000;
+  const kmBetween = (fromDaysAgo: number, toDaysAgo: number) =>
+    runs
+      .filter((a) => {
+        const age = now.getTime() - new Date(a.start_date).getTime();
+        return age > toDaysAgo * dayMs && age <= fromDaysAgo * dayMs;
+      })
+      .reduce((sum, a) => sum + a.distance_m / 1000, 0);
+  const last7 = kmBetween(7, 0);
+  const prev7 = kmBetween(14, 7);
+  const latest = feedback[0];
+  return {
+    today,
+    w0,
+    races,
+    currentFitnessKm: runs.reduce((sum, a) => sum + a.distance_m / 1000, 0) / 4,
+    last7Km: last7,
+    loadFlag: prev7 > 0 && last7 > prev7 * 1.1,
+    tooHardCheckin:
+      !!latest && latest.week_start_date >= addDays(w0, -14) && TOO_HARD.test(latest.feedback),
+    stored,
+    trace,
+  };
+}
+
 export async function refreshSeasonPlan(now: Date = new Date()): Promise<SeasonRefresh> {
   const today = todayISO(now);
   const w0 = mondayOf(today);
