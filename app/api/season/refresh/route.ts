@@ -4,10 +4,19 @@ import { refreshSeasonPlan } from "@/lib/seasonPlan";
 // Re-runs the season planner on demand (PIN-gated by the middleware like every
 // other /api route). No Claude call. Returns the storage warning, if any, and
 // the near weeks so the result can be checked without opening the app.
+// Vercel sets this at build time; it tells us which commit is actually live.
+const COMMIT = process.env.VERCEL_GIT_COMMIT_SHA?.slice(0, 7) ?? "local";
+
+/** Ping: no work, just the live commit — separates "route unreachable" from "planner hangs". */
+export async function GET() {
+  return NextResponse.json({ ok: true, commit: COMMIT });
+}
+
 export async function POST() {
   const result = await refreshSeasonPlan();
   return NextResponse.json({
     ok: !result.warning,
+    commit: COMMIT,
     warning: result.warning ?? null,
     trace: result.trace,
     races: result.races.length,
