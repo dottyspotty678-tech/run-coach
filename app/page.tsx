@@ -322,7 +322,7 @@ export default async function DashboardPage() {
           <LogSessionButton todayIso={today} appearance="tile" label="Log a session">
             <IconActivity size={18} strokeWidth={2} />
           </LogSessionButton>
-          <Link href="/settings#race" className="card flex min-h-[64px] items-center gap-2.5 px-3.5 py-3">
+          <Link href="/settings#races" className="card flex min-h-[64px] items-center gap-2.5 px-3.5 py-3">
             <span className="shrink-0" style={{ color: "var(--accent)" }}>
               <IconFlag size={18} strokeWidth={2} />
             </span>

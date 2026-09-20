@@ -4,9 +4,9 @@ import { PHASE_LABELS, blockLabel, weeksUntil } from "@/lib/season";
 import { isStravaConnected } from "@/lib/strava";
 import { isMicrosoftConnected } from "@/lib/microsoft";
 import { mondayOf, relativeTime, todayISO } from "@/components/dates";
-import { getNextRaces, getSeasonWeek, getSyncStatus } from "@/components/data";
+import { getNextRaces, getRaces, getSeasonWeek, getSyncStatus } from "@/components/data";
 import { IconChevronRight } from "@/components/icons";
-import { RaceForm } from "./race-form";
+import { Races } from "./races";
 import { FoodForm } from "./food-form";
 import { Connections } from "./connections";
 import pkg from "@/package.json";
@@ -22,7 +22,7 @@ export default async function SettingsPage() {
 
   const [
     { data: settings },
-    { data: raceGoal },
+    races,
     stravaConnected,
     microsoftConnected,
     syncStatus,
@@ -30,9 +30,8 @@ export default async function SettingsPage() {
     nextRaces,
   ] = await Promise.all([
     supabase.from("settings").select("*").eq("id", true).maybeSingle(),
-    // Legacy single goal — still feeds the deprecated RaceForm until the
-    // designer's Races list replaces it (docs/SEASON-PLAN.md §6).
-    supabase.from("race_goal").select("*").eq("id", true).maybeSingle(),
+    // v3: the races list replaces the legacy single race_goal form.
+    getRaces(),
     isStravaConnected(),
     isMicrosoftConnected(),
     getSyncStatus(),
@@ -49,26 +48,34 @@ export default async function SettingsPage() {
         <h1 className="display text-[26px] leading-8">Settings</h1>
       </header>
 
-      {/* 1. Race goal (id: deep-link target for the Dashboard quick action) */}
-      <section id="race" className="flex flex-col gap-3">
-        <h2 className="overline" style={{ color: "var(--ink-2)" }}>
-          Race goal
-        </h2>
-        <div className="card p-4">
-          <RaceForm
-            defaults={
-              raceGoal
-                ? {
-                    race_name: raceGoal.race_name,
-                    distance_km: raceGoal.distance_km,
-                    race_date: raceGoal.race_date,
-                    target_time: raceGoal.target_time,
-                  }
-                : null
-            }
-            todayIso={todayISO(now)}
-          />
+      {/* 1. Races (id: deep-link target for the Dashboard quick action) */}
+      <section id="races" className="flex flex-col gap-3">
+        <div className="flex items-center justify-between">
+          <h2 className="overline" style={{ color: "var(--ink-2)" }}>
+            Races
+          </h2>
+          <Link
+            href="/season"
+            className="flex min-h-[44px] items-center gap-0.5 text-[13px] font-semibold"
+            style={{ color: "var(--accent)" }}
+          >
+            Season
+            <IconChevronRight size={14} strokeWidth={2.4} />
+          </Link>
         </div>
+        <Races
+          races={races.map((r) => ({
+            id: r.id,
+            name: r.name,
+            distance_km: r.distance_km,
+            race_date: r.race_date,
+            priority: r.priority,
+            target_time: r.target_time,
+            result_time: r.result_time,
+            result_notes: r.result_notes,
+          }))}
+          todayIso={today}
+        />
         {seasonRow && (
           <div
             className="card flex items-baseline gap-2 p-4"
