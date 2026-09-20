@@ -277,11 +277,21 @@ function computeRaw(input: SeasonInput): SeasonWeek[] {
   const nextAB = (i: number) =>
     inWindow.find((r) => r.priority !== "C" && weekIndexOf(r.race_date) >= i) ?? null;
 
+  // 10% rule at the seam with real life: the first progressive target may not
+  // exceed what the last 7 days support (+10%), even when the 4-week average
+  // is higher — otherwise a hold week (say 20 km after a niggle) is followed
+  // by a leap straight back to the average. The plan then ramps from where the
+  // runner actually is.
+  const seed =
+    input.runningCeilingKm && input.runningCeilingKm > 0
+      ? Math.min(fitness, input.runningCeilingKm)
+      : fitness;
+
   const rows: SeasonWeek[] = [];
-  let lastProgressive = fitness; // reference for the next progressive week
-  let firstProgressiveDone = false; // first progressive week starts AT fitness
-  let prevTarget = fitness;
-  let segmentPeak = fitness; // highest progressive target since the last race
+  let lastProgressive = seed; // reference for the next progressive week
+  let firstProgressiveDone = false; // first progressive week starts AT the seed
+  let prevTarget = seed;
+  let segmentPeak = seed; // highest progressive target since the last race
 
   for (let i = 0; i < N; i++) {
     const s = slots[i];
@@ -304,6 +314,10 @@ function computeRaw(input: SeasonInput): SeasonWeek[] {
       }
       case "down":
         target = prevTarget * 0.75;
+        // The week after a down week returns to the pre-down level before the
+        // climb resumes — down weeks consolidate; they must slow the ramp, not
+        // be skipped over by it.
+        firstProgressiveDone = false;
         break;
       case "taper": {
         let k = 0;
