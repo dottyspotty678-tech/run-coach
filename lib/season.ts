@@ -56,6 +56,12 @@ export type SeasonInput = {
   tooHardCheckin?: boolean;
   /** Week (Monday) a load-flag/too-hard hold applies to. Default: week 0. */
   holdWeek?: string;
+  /**
+   * Week (Monday) where 3:1 block counting starts — the week being planned.
+   * Weeks before it are already lived. Stored rows for near weeks override
+   * this so later refreshes continue the sequence rather than restarting it.
+   */
+  blockStartWeek?: string;
   /** Horizon in weeks. Default 35. */
   weeks?: number;
 };
@@ -116,9 +122,13 @@ export function recoveryWeeksFor(km: number): number {
   return distanceTier(km) === "marathon" ? 2 : 1;
 }
 
-/** Weekly running-volume ceiling by the next A race's distance (§3). */
+/**
+ * Weekly running-volume ceiling by the next A race's distance (§3). The
+ * marathon figure is 70 rather than the elite-derived 85: this runner's normal
+ * range is 40–60 km, and the 2026-27 build starts from an injury return.
+ */
 export function volumeCeilingFor(km: number): number {
-  if (km >= 30) return 85;
+  if (km >= 30) return 70;
   if (km >= 15) return 65;
   if (km >= 8) return 55;
   return 50;
@@ -135,6 +145,8 @@ export const PHASE_FOCUS: Record<SeasonPhase, string> = {
 };
 
 const PRIORITY_RANK: Record<RacePriority, number> = { A: 0, B: 1, C: 2 };
+/** Phases whose position is dictated by a race, not by the 3:1 counter. */
+const STRUCTURAL_PHASES: ReadonlySet<SeasonPhase> = new Set(["taper", "race_week", "recovery"]);
 const DEFAULT_WEEKS = 35;
 /** Re-entry volume when there is no running history at all. */
 const REENTRY_DEFAULT_KM = 20;
@@ -240,11 +252,29 @@ function computeRaw(input: SeasonInput): SeasonWeek[] {
   }
 
   // --- 3:1 block filling, left to right; any fixed week ends the block.
+  // Counting starts at the planning week (blockStartWeek); near weeks that
+  // already have a stored position keep it, so a refresh continues the
+  // sequence the runner has been living rather than restarting at "1".
+  const storedPos = new Map((input.stored ?? []).map((s) => [s.week_start_date, s]));
+  const blockStartIndex = input.blockStartWeek ? Math.max(0, weekIndexOf(input.blockStartWeek)) : 0;
+  const PROGRESSIVE_POS: ReadonlySet<string> = new Set(["1", "2", "3", "down"]);
   let counter = 0;
   for (let i = 0; i < N; i++) {
     const s = slots[i];
     if (s.fixed) {
       counter = 0;
+      continue;
+    }
+    if (i === blockStartIndex) counter = 0;
+    const kept = i <= 7 ? storedPos.get(weekStarts[i]) : undefined;
+    if (
+      kept &&
+      PROGRESSIVE_POS.has(kept.block_position) &&
+      !STRUCTURAL_PHASES.has(kept.phase) &&
+      kept.race_in_week_id === (s.raceInWeek?.id ?? null)
+    ) {
+      s.pos = kept.block_position;
+      counter = kept.block_position === "down" ? 0 : Number(kept.block_position);
       continue;
     }
     counter += 1;
@@ -287,37 +317,73 @@ function computeRaw(input: SeasonInput): SeasonWeek[] {
       ? Math.min(fitness, input.runningCeilingKm)
       : fitness;
 
+  // Volume is planned right-to-left too. A "segment" runs from week 0 (or the
+  // week after a recovery block) up to the taper of its A race. Within it the
+  // progressive weeks are indexed k = 0..P-1 and two curves are drawn:
+  //   forward  = seed × 1.09^k          (the fastest the 10% rule allows)
+  //   backward = peak ÷ 1.09^(P-1-k)    (what reaches the peak exactly at the
+  //                                       last progressive week before taper)
+  // The target is min(forward, max(backward, seed)): never faster than the
+  // rule, never higher than needed to peak on time, never below where the
+  // runner already is. If the forward curve cannot reach the peak in time,
+  // it simply rules — the peak is whatever the runner can safely get to.
+  const PROGRESS = 1.09;
+  const isProgressivePos = (p: BlockPosition | null) => p === "1" || p === "2" || p === "3";
+  type Segment = { start: number; end: number; progressive: number[]; ceiling: number; hasA: boolean };
+  const segments: Segment[] = [];
+  {
+    let start = 0;
+    for (let i = 0; i <= N; i++) {
+      const endsHere = i === N || (i > 0 && slots[i - 1].pos === "recovery" && slots[i].pos !== "recovery");
+      if (!endsHere) continue;
+      const a = nextA(start);
+      const progressive: number[] = [];
+      for (let j = start; j < i; j++) if (isProgressivePos(slots[j].pos)) progressive.push(j);
+      segments.push({
+        start,
+        end: i,
+        progressive,
+        ceiling: a ? volumeCeilingFor(a.distance_km) : fitness * 1.2,
+        hasA: Boolean(a),
+      });
+      start = i;
+    }
+  }
+  const segmentOf = (i: number) => segments.find((g) => i >= g.start && i < g.end)!;
+
   const rows: SeasonWeek[] = [];
-  let lastProgressive = seed; // reference for the next progressive week
-  let firstProgressiveDone = false; // first progressive week starts AT the seed
+  let segSeed = seed; // where this segment's forward curve starts
+  let lastProgressive = seed; // latest progressive target (B race weeks key off it)
   let prevTarget = seed;
-  let segmentPeak = seed; // highest progressive target since the last race
+  let segmentPeak = seed; // highest progressive target in the segment so far
 
   for (let i = 0; i < N; i++) {
     const s = slots[i];
     const phase = s.phase as SeasonPhase;
     const pos = s.pos as BlockPosition;
-    const a = nextA(i);
-    const ceiling = phase === "general" || !a ? fitness * 1.2 : volumeCeilingFor(a.distance_km);
+    const seg = segmentOf(i);
 
     let target: number;
     switch (pos) {
       case "1":
       case "2":
       case "3": {
-        target = firstProgressiveDone ? lastProgressive * 1.09 : lastProgressive;
-        target = Math.min(target, ceiling);
+        const k = seg.progressive.indexOf(i);
+        const P = seg.progressive.length;
+        const forward = Math.min(segSeed * Math.pow(PROGRESS, k), seg.ceiling);
+        if (seg.hasA) {
+          const backward = seg.ceiling / Math.pow(PROGRESS, Math.max(0, P - 1 - k));
+          target = Math.min(forward, Math.max(backward, segSeed));
+        } else {
+          target = forward;
+        }
         lastProgressive = target;
-        firstProgressiveDone = true;
         segmentPeak = Math.max(segmentPeak, target);
         break;
       }
       case "down":
+        // Consolidation: a quarter off the previous week.
         target = prevTarget * 0.75;
-        // The week after a down week returns to the pre-down level before the
-        // climb resumes — down weeks consolidate; they must slow the ramp, not
-        // be skipped over by it.
-        firstProgressiveDone = false;
         break;
       case "taper": {
         let k = 0;
@@ -335,9 +401,9 @@ function computeRaw(input: SeasonInput): SeasonWeek[] {
       case "recovery":
       default: {
         target = segmentPeak * 0.5;
-        // Re-enter the next block at ~70% of the peak just raced from.
-        lastProgressive = segmentPeak * 0.7;
-        firstProgressiveDone = false;
+        // Re-enter the next segment at ~70% of the peak just raced from.
+        segSeed = segmentPeak * 0.7;
+        lastProgressive = segSeed;
         break;
       }
     }
@@ -346,9 +412,9 @@ function computeRaw(input: SeasonInput): SeasonWeek[] {
       target = input.runningCeilingKm;
     }
     prevTarget = target;
-    // After the recovery segment the peak reference resets to the re-entry level.
+    // After the recovery block the peak reference resets to the re-entry level.
     if (pos === "recovery" && (i + 1 >= N || slots[i + 1].pos !== "recovery")) {
-      segmentPeak = lastProgressive;
+      segmentPeak = segSeed;
     }
 
     const { low, high } = band(target);
@@ -376,7 +442,7 @@ function computeRaw(input: SeasonInput): SeasonWeek[] {
 // Stability merge (§4) — fuzzy far, stable near.
 // ---------------------------------------------------------------------------
 
-const STRUCTURAL: ReadonlySet<SeasonPhase> = new Set(["taper", "race_week", "recovery"]);
+const STRUCTURAL: ReadonlySet<SeasonPhase> = STRUCTURAL_PHASES;
 
 function clamp(v: number, lo: number, hi: number): number {
   return Math.min(hi, Math.max(lo, v));

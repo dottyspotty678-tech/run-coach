@@ -60,10 +60,17 @@ test("single marathon 20 weeks out: full right-to-left stack", () => {
   // 3:1 blocks run left to right from week 0; never a down week right before the taper.
   assert.deepEqual(positions(rows).slice(0, 4), ["1", "2", "3", "down"]);
   assert.notEqual(rows[16].block_position, "down");
-  // Volumes: first week starts at fitness, progressive weeks climb ≤ ~9%, ceiling 85 km.
+  // Volumes: first week starts at fitness, progressive weeks climb ≤ ~9%, ceiling 70 km,
+  // and the last progressive week before the taper reaches the ceiling (right-to-left).
   assert.ok(rows[0].volume_low_km <= 45 && rows[0].volume_high_km >= 45);
   for (let i = 1; i < 17; i++) {
-    assert.ok(rows[i].volume_high_km <= 85 * 1.1 + 0.05, `week ${i} above marathon ceiling`);
+    assert.ok(rows[i].volume_high_km <= 70 * 1.1 + 0.05, `week ${i} above marathon ceiling`);
+  }
+  assert.ok(rows[16].volume_high_km >= 70 * 1.1 - 0.05, "peak week reaches the ceiling");
+  for (let i = 1; i < 17; i++) {
+    if (["1", "2", "3"].includes(rows[i].block_position) && ["1", "2", "3"].includes(rows[i - 1].block_position)) {
+      assert.ok(rows[i].volume_high_km <= rows[i - 1].volume_high_km * 1.1 + 0.05, `week ${i} climbs > 10%`);
+    }
   }
   // Taper falls, race week ~40% of peak, recovery ~50%.
   assert.ok(rows[17].volume_high_km > rows[18].volume_high_km);

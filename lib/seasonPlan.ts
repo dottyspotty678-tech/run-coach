@@ -67,6 +67,9 @@ export async function refreshSeasonPlan(now: Date = new Date()): Promise<SeasonR
       loadFlag,
       tooHardCheckin,
       holdWeek: boundaryWeekStart(now),
+      // Blocks count from the week being planned; stored near weeks keep
+      // their positions so refreshes continue the sequence.
+      blockStartWeek: boundaryWeekStart(now),
       weeks: HORIZON_WEEKS,
     });
 
